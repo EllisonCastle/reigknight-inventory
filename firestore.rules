@@ -1,0 +1,19 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    function signedIn() { return request.auth != null; }
+
+    match /venues/{id}         { allow read, write: if signedIn(); }
+    match /inventoryItems/{id} { allow read, write: if signedIn(); }
+    match /people/{id}         { allow read, write: if signedIn(); }
+    match /events/{id}         { allow read, write: if signedIn(); }
+    match /reservations/{id}   { allow read, write: if signedIn(); }
+    match /tasks/{id}          { allow read, write: if signedIn(); }
+
+    match /publicViews/{token} {
+      allow get:   if true;      // anyone with the unguessable token can read this one doc
+      allow list:  if false;     // but cannot enumerate the collection
+      allow write: if signedIn();
+    }
+  }
+}
