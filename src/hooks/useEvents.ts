@@ -4,6 +4,7 @@ import {
   collection,
   deleteDoc,
   doc,
+  getDoc,
   onSnapshot,
   orderBy,
   query,
@@ -13,6 +14,7 @@ import {
 import { db } from '../lib/firebase'
 import { useAuth } from './useAuth'
 import { syncReservationsEventStatus } from '../lib/availability'
+import { publishEventSnapshot } from '../lib/publishSnapshot'
 import type { EventDoc } from '../types'
 
 export function useEvents() {
@@ -36,13 +38,16 @@ export function useEvents() {
     )
   }, [])
 
-  const createEvent = (data: Omit<EventDoc, 'id' | 'createdAt' | 'createdBy' | 'shareToken'>) =>
-    addDoc(collection(db, 'events'), {
+  const createEvent = async (data: Omit<EventDoc, 'id' | 'createdAt' | 'createdBy' | 'shareToken'>) => {
+    const ref = await addDoc(collection(db, 'events'), {
       ...data,
       shareToken: crypto.randomUUID(),
       createdAt: serverTimestamp(),
       createdBy: user?.uid ?? '',
     })
+    await publishEventSnapshot(ref.id)
+    return ref
+  }
 
   const updateEvent = async (
     id: string,
@@ -52,9 +57,17 @@ export function useEvents() {
     if (data.status) {
       await syncReservationsEventStatus(id, data.status)
     }
+    await publishEventSnapshot(id)
   }
 
-  const deleteEvent = (id: string) => deleteDoc(doc(db, 'events', id))
+  const deleteEvent = async (id: string) => {
+    const snap = await getDoc(doc(db, 'events', id))
+    const shareToken = snap.exists() ? (snap.data() as EventDoc).shareToken : undefined
+    await deleteDoc(doc(db, 'events', id))
+    if (shareToken) {
+      await deleteDoc(doc(db, 'publicViews', shareToken))
+    }
+  }
 
   return { events, loading, error, createEvent, updateEvent, deleteEvent }
 }

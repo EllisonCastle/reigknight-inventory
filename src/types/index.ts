@@ -105,3 +105,32 @@ export interface TaskDoc {
   createdAt: Timestamp | null
   createdBy: string
 }
+
+/** publicViews/{shareToken} — a self-contained, read-only snapshot of one event. */
+export interface PublicViewSnapshot {
+  eventId: string
+  event: {
+    name: string
+    venueName: string
+    startAt: Timestamp
+    endAt: Timestamp
+    status: EventStatus
+    clientName: string
+  }
+  inventory: Array<{
+    itemId: string
+    itemName: string
+    quantity: number
+    primaryPhotoUrl: string | null
+  }>
+  tasks: Array<{
+    id: string
+    title: string
+    taskType: TaskType
+    assigneeNames: string[]
+    dueDate: Timestamp | null
+    status: TaskStatus
+  }>
+  checkinSummary: null
+  updatedAt: Timestamp
+}
