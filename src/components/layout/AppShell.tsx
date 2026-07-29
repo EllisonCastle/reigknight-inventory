@@ -1,6 +1,7 @@
 import { useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { useCurrentPerson } from '../../hooks/useCurrentPerson'
 import { BottomSheet } from '../ui/BottomSheet'
 
 const navItems = [
@@ -9,12 +10,14 @@ const navItems = [
   { to: '/inventory', label: 'Inventory' },
   { to: '/events', label: 'Events' },
   { to: '/my-tasks', label: 'My Tasks' },
-  { to: '/people', label: 'People' },
+  { to: '/people', label: 'People', adminOnly: true },
 ]
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
+  const { person } = useCurrentPerson()
   const [menuOpen, setMenuOpen] = useState(false)
+  const visibleNavItems = navItems.filter((item) => !item.adminOnly || person?.role === 'admin')
 
   return (
     <div className="flex min-h-screen bg-surface">
@@ -23,7 +26,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           <span className="text-lg font-semibold tracking-tight text-charcoal">Reigknight</span>
         </div>
         <nav className="flex flex-col gap-1 px-3">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}
@@ -66,7 +69,7 @@ export function AppShell({ children }: { children: ReactNode }) {
 
       <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Menu">
         <nav className="flex flex-col gap-1">
-          {navItems.map((item) => (
+          {visibleNavItems.map((item) => (
             <NavLink
               key={item.to}
               to={item.to}

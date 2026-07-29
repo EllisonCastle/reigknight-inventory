@@ -2,6 +2,7 @@ import type { ReactNode } from 'react'
 import { BrowserRouter, Route, Routes } from 'react-router-dom'
 import { AuthProvider } from './hooks/useAuth'
 import { ProtectedRoute } from './components/layout/ProtectedRoute'
+import { AdminOnly } from './components/layout/AdminOnly'
 import { AppShell } from './components/layout/AppShell'
 import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
@@ -31,7 +32,16 @@ export default function App() {
           <Route path="/inventory" element={<Protected><InventoryPage /></Protected>} />
           <Route path="/events" element={<Protected><EventsPage /></Protected>} />
           <Route path="/events/:eventId" element={<Protected><EventDetailPage /></Protected>} />
-          <Route path="/people" element={<Protected><PeoplePage /></Protected>} />
+          <Route
+            path="/people"
+            element={
+              <Protected>
+                <AdminOnly>
+                  <PeoplePage />
+                </AdminOnly>
+              </Protected>
+            }
+          />
           <Route path="/my-tasks" element={<Protected><MyTasksPage /></Protected>} />
         </Routes>
       </BrowserRouter>

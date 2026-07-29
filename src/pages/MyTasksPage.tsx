@@ -1,7 +1,6 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
-import { useAuth } from '../hooks/useAuth'
-import { usePeople } from '../hooks/usePeople'
+import { useCurrentPerson } from '../hooks/useCurrentPerson'
 import { useEvents } from '../hooks/useEvents'
 import { useTasksForAssignee } from '../hooks/useTasks'
 import { Badge } from '../components/ui/Badge'
@@ -18,54 +17,9 @@ const statusTone: Record<string, 'neutral' | 'amber' | 'red' | 'green'> = {
 }
 
 export function MyTasksPage() {
-  const { user } = useAuth()
-  const { people, loading: peopleLoading, createPerson, updatePerson } = usePeople()
+  const { person, loading: personLoading, error: personError } = useCurrentPerson()
   const { events } = useEvents()
-  const [personId, setPersonId] = useState<string | undefined>(undefined)
-  const [provisioning, setProvisioning] = useState(true)
-  const [provisionError, setProvisionError] = useState('')
-  const hasRunRef = useRef(false)
-
-  useEffect(() => {
-    if (peopleLoading || !user || hasRunRef.current) return
-    hasRunRef.current = true
-
-    const byAuthUid = people.find((p) => p.authUid === user.uid)
-    if (byAuthUid) {
-      setPersonId(byAuthUid.id)
-      setProvisioning(false)
-      return
-    }
-
-    const byEmail = people.find(
-      (p) => !p.authUid && p.email && user.email && p.email.toLowerCase() === user.email.toLowerCase(),
-    )
-
-    ;(async () => {
-      try {
-        if (byEmail) {
-          await updatePerson(byEmail.id, { authUid: user.uid })
-          setPersonId(byEmail.id)
-        } else {
-          const ref = await createPerson({
-            fullName: user.email ?? 'Team member',
-            email: user.email ?? '',
-            phone: '',
-            role: 'staff',
-            authUid: user.uid,
-            active: true,
-          })
-          setPersonId(ref.id)
-        }
-      } catch (err) {
-        setProvisionError(err instanceof Error ? err.message : 'Could not set up your tasks profile.')
-      } finally {
-        setProvisioning(false)
-      }
-    })()
-  }, [peopleLoading, people, user, createPerson, updatePerson])
-
-  const { tasks, loading: tasksLoading, error: tasksError, setTaskStatus } = useTasksForAssignee(personId)
+  const { tasks, loading: tasksLoading, error: tasksError, setTaskStatus } = useTasksForAssignee(person?.id)
 
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -86,9 +40,9 @@ export function MyTasksPage() {
     <div className="mx-auto max-w-3xl">
       <h1 className="mb-6 text-xl font-semibold text-charcoal">My tasks</h1>
 
-      <ErrorNotice message={provisionError || tasksError} />
+      <ErrorNotice message={personError || tasksError} />
 
-      {(provisioning || peopleLoading) ? (
+      {personLoading ? (
         <p className="text-base text-gray-500">Setting up your tasks…</p>
       ) : (
         <>

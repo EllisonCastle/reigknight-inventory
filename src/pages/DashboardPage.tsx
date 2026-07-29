@@ -3,8 +3,20 @@ import { Link } from 'react-router-dom'
 import { useVenues } from '../hooks/useVenues'
 import { useInventoryItems } from '../hooks/useInventoryItems'
 import { useEvents } from '../hooks/useEvents'
-import { StatusBadge } from '../components/ui/Badge'
-import { formatTimestamp } from '../lib/datetime'
+import { usePeople } from '../hooks/usePeople'
+import { useCurrentPerson } from '../hooks/useCurrentPerson'
+import { useTasksForAssignee, useAllTasks } from '../hooks/useTasks'
+import { Badge, StatusBadge } from '../components/ui/Badge'
+import { formatTimestamp, formatDate } from '../lib/datetime'
+import { TASK_STATUS_LABELS } from '../constants/tasks'
+import type { TaskDoc } from '../types'
+
+const taskStatusTone: Record<string, 'neutral' | 'amber' | 'red' | 'green'> = {
+  todo: 'neutral',
+  in_progress: 'amber',
+  blocked: 'red',
+  done: 'green',
+}
 
 function StatTile({ label, value }: { label: string; value: number | string }) {
   return (
@@ -15,10 +27,23 @@ function StatTile({ label, value }: { label: string; value: number | string }) {
   )
 }
 
+function sortByBlockedThenDueDate(tasks: TaskDoc[]): TaskDoc[] {
+  return [...tasks].sort((a, b) => {
+    const aBlocked = a.status === 'blocked' ? 0 : 1
+    const bBlocked = b.status === 'blocked' ? 0 : 1
+    if (aBlocked !== bBlocked) return aBlocked - bBlocked
+    return (a.dueDate?.toMillis() ?? 0) - (b.dueDate?.toMillis() ?? 0)
+  })
+}
+
 export function DashboardPage() {
   const { venues } = useVenues()
   const { items } = useInventoryItems()
   const { events } = useEvents()
+  const { people } = usePeople()
+  const { person } = useCurrentPerson()
+  const { tasks: myTasks } = useTasksForAssignee(person?.id)
+  const { tasks: allTasks } = useAllTasks()
 
   const upcoming = useMemo(() => {
     const now = Date.now()
@@ -33,6 +58,20 @@ export function DashboardPage() {
     return (id: string) => map.get(id) ?? '—'
   }, [venues])
 
+  const eventsById = useMemo(() => new Map(events.map((e) => [e.id, e])), [events])
+  const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
+
+  const myUpcomingTasks = useMemo(
+    () => sortByBlockedThenDueDate(myTasks.filter((t) => t.status !== 'done')).slice(0, 5),
+    [myTasks],
+  )
+
+  const isAdmin = person?.role === 'admin'
+  const adminTasks = useMemo(
+    () => sortByBlockedThenDueDate(allTasks.filter((t) => t.status !== 'done')).slice(0, 8),
+    [allTasks],
+  )
+
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-6 text-xl font-semibold text-charcoal">Dashboard</h1>
@@ -45,9 +84,9 @@ export function DashboardPage() {
 
       <h2 className="mb-3 text-lg font-semibold text-charcoal">Next up</h2>
       {upcoming.length === 0 ? (
-        <p className="text-base text-gray-500">Nothing on the calendar right now.</p>
+        <p className="mb-8 text-base text-gray-500">Nothing on the calendar right now.</p>
       ) : (
-        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+        <div className="mb-8 overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-base">
             <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
               <tr>
@@ -75,6 +114,80 @@ export function DashboardPage() {
             </tbody>
           </table>
         </div>
+      )}
+
+      <div className="mb-3 flex items-center justify-between">
+        <h2 className="text-lg font-semibold text-charcoal">My tasks</h2>
+        <Link to="/my-tasks" className="text-base font-medium text-regal hover:underline">
+          View all
+        </Link>
+      </div>
+      {myUpcomingTasks.length === 0 ? (
+        <p className="mb-8 text-base text-gray-500">Nothing assigned to you right now.</p>
+      ) : (
+        <div className="mb-8 flex flex-col gap-2">
+          {myUpcomingTasks.map((task) => {
+            const event = eventsById.get(task.eventId)
+            return (
+              <div key={task.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
+                <div>
+                  <p className="text-base font-medium text-charcoal">{task.title}</p>
+                  <p className="text-sm text-gray-500">
+                    {event ? (
+                      <Link to={`/events/${event.id}`} className="hover:underline">
+                        {event.name}
+                      </Link>
+                    ) : (
+                      'Unknown event'
+                    )}
+                    {' · Due '}
+                    {formatDate(task.dueDate)}
+                  </p>
+                </div>
+                <Badge tone={taskStatusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>
+              </div>
+            )
+          })}
+        </div>
+      )}
+
+      {isAdmin && (
+        <>
+          <h2 className="mb-3 text-lg font-semibold text-charcoal">All upcoming &amp; in-progress tasks</h2>
+          {adminTasks.length === 0 ? (
+            <p className="text-base text-gray-500">No open tasks anywhere right now.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {adminTasks.map((task) => {
+                const event = eventsById.get(task.eventId)
+                const assigneeNames = task.assigneeIds
+                  .map((id) => peopleById.get(id)?.fullName)
+                  .filter((name): name is string => Boolean(name))
+                return (
+                  <div key={task.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
+                    <div>
+                      <p className="text-base font-medium text-charcoal">{task.title}</p>
+                      <p className="text-sm text-gray-500">
+                        {event ? (
+                          <Link to={`/events/${event.id}`} className="hover:underline">
+                            {event.name}
+                          </Link>
+                        ) : (
+                          'Unknown event'
+                        )}
+                        {' · '}
+                        {assigneeNames.length > 0 ? assigneeNames.join(', ') : 'Unassigned'}
+                        {' · Due '}
+                        {formatDate(task.dueDate)}
+                      </p>
+                    </div>
+                    <Badge tone={taskStatusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>
+                  </div>
+                )
+              })}
+            </div>
+          )}
+        </>
       )}
     </div>
   )

@@ -35,7 +35,7 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
   const filtered = tasks.filter((t) => {
     if (typeFilter && t.taskType !== typeFilter) return false
     if (statusFilter && t.status !== statusFilter) return false
-    if (assigneeFilter && t.assigneeId !== assigneeFilter) return false
+    if (assigneeFilter && !t.assigneeIds.includes(assigneeFilter)) return false
     return true
   })
 
@@ -128,7 +128,9 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
                   </p>
                   <p className="text-sm text-gray-500">
                     {TASK_TYPE_LABELS[task.taskType]}
-                    {task.assigneeId ? ` · ${peopleById.get(task.assigneeId)?.fullName ?? 'Unknown'}` : ' · Unassigned'}
+                    {task.assigneeIds.length > 0
+                      ? ` · ${task.assigneeIds.map((id) => peopleById.get(id)?.fullName ?? 'Unknown').join(', ')}`
+                      : ' · Unassigned'}
                     {' · Due '}
                     {formatDate(task.dueDate)}
                   </p>
