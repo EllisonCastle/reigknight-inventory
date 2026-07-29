@@ -4,12 +4,20 @@ An internal platform for planning and running events at Ellison Castle: inventor
 
 ---
 
+## Firebase setup (this project — already done)
+
+This app is added to the **existing `reigknight-checkin` Firebase project** as a second web app (not a new project), so it can read check-in data later. Key facts Claude Code must respect:
+
+- **The check-in app already uses Realtime Database** in this project. This new app uses **Firestore**, which lives alongside it. **Do not touch, migrate, or alter the Realtime Database or its rules.**
+- **Anonymous sign-in is enabled** (the check-in app relies on it) and **must stay enabled**. **Email/Password** sign-in is also enabled — that's what the Reigknight team uses.
+- Firestore security rules must therefore treat "a real team member" as **email/password auth specifically**, not merely "any signed-in user" (an anonymous check-in user is also signed in). See the rules section — use the `isTeam()` helper, not a generic `signedIn()`.
+- **Config comes from env vars** (values are not secret, but keep them out of source). Create a `.env` (git-ignored) and read config from it. The same vars go into **Netlify → Environment variables** for deploys.
+
 ## How to use this spec with Claude Code
 
 1. Create an empty project folder and open Claude Code in it.
-2. In the Firebase console, open the **same project your check-in app uses** → Project Settings → grab the web app config (`apiKey`, `authDomain`, `projectId`, `storageBucket`, `appId`).
-3. Enable **Email/Password** sign-in under Authentication, and enable **Cloud Storage** (this prompts a Blaze upgrade — see the cost note at the end; you stay at $0).
-4. Paste this whole spec, then tell Claude Code: **"Start with Phase 1 only. Don't build later phases yet."** Phase-by-phase produces far better results than one big request.
+2. Paste this whole spec plus your Firebase web config values (from Project Settings → Your apps).
+3. Tell Claude Code: **"Start with Phase 1 only. Don't build later phases yet."** Phase-by-phase produces far better results than one big request.
 
 ---
 
@@ -62,19 +70,42 @@ Firestore is collections of documents. Reservations and tasks are **top-level co
 {
   name,                 // "60in Round Table", "Chiavari Chair"
   description,
-  tags: [ string ],     // ["rustic", "outdoor", "gold"] — flexible, filterable (array-contains)
-  color,                // "Gold", "White", "Natural Wood"
-  totalQuantity,        // number owned/on hand — this is the "quantity available" field
-  location,             // where it's stored, e.g. "Barn Shed", "Storage Room B"
+  category,             // REQUIRED — one value from CATEGORIES preset list
+  material,             // OPTIONAL — one value from MATERIALS preset list
+  color,                // OPTIONAL — one value from COLORS preset list; if "Custom", also store colorCustom
+  colorCustom,          // free text, only when color === "Custom"
+  tags: [ string ],     // free-form multi-tags: ["rustic","outdoor","boho"] — array-contains filterable
+  totalQuantity,        // total units owned
+  location,             // where it's stored, e.g. "Warehouse", "Barn Shed", "Storage Room B"
+  bin,                  // OPTIONAL — specific bin/shelf/spot within the location, e.g. "Bin 17", "Shelf B-3"
+  condition,            // one value from CONDITIONS preset list — item-level lifecycle
+  statusBreakdown: {    // per-unit count buckets — MUST sum to totalQuantity
+    good: number,
+    needsRepair: number,
+    needsReplacement: number
+  },
   photos: [ { url, isPrimary, sortOrder } ],   // uploaded to Cloud Storage
-  model,                // optional — more detailed spec/model name
-  sku,                  // optional — your own barcode/QR value (see Barcode section)
-  createdAt
+  model,                // optional — spec/model name
+  createdAt,
+  updatedAt
 }
 ```
-> **On "quantity available":** `totalQuantity` is how many Reigknight *owns*. How many are *free for a given event window* is computed live by the availability check in the double-booking logic — never stored, always derived, so it can't drift out of date.
->
-> **Filtering:** the inventory list must be filterable by **tags** (rustic, outdoor, etc.), **color**, and **location**, plus text search on name/description. Tags replace a single rigid "category" — an item can carry several.
+
+**Required on save:** `name`, `category`, `totalQuantity`, `location`, `statusBreakdown` (with counts summing correctly). Everything else is optional.
+
+**Derived fields (computed in code, don't store):**
+- `needsAttention` = `statusBreakdown.needsRepair + statusBreakdown.needsReplacement > 0`
+- `availableForRental` = `totalQuantity - needsRepair - needsReplacement` — items in `Needs Repair` / `Needs Replacement` are **excluded from availability** in the double-booking check (they can't be rented until fixed).
+
+**Validation invariants:**
+- `statusBreakdown.good + needsRepair + needsReplacement === totalQuantity` — always. When the user changes any of these four fields in the UI, auto-balance and prevent save if they don't reconcile.
+- When `totalQuantity` is increased, add the delta to `good` by default.
+- When `totalQuantity` is decreased, remove from `needsReplacement` first, then `needsRepair`, then `good`.
+
+**Filtering & sorting (list view must support):**
+- Filter by category, material, color, tags (array-contains), location, bin, condition, status (needsAttention true/false).
+- Sort by name, category, `needsRepair + needsReplacement` desc ("what needs work most"), condition, location.
+- Text search on name + description + bin.
 
 ### `people/{personId}` — anyone assignable (staff who log in AND contractors who don't)
 ```
@@ -194,35 +225,204 @@ const available = item.totalQuantity - reserved;
 
 ## Firestore Security Rules (v1)
 
+> **This project has Anonymous sign-in enabled (for the check-in app), so `request.auth != null` is true for anonymous users too.** Reigknight data must be gated to **email/password** accounts specifically — hence `isTeam()` below, not a generic "signed in" check. Also: **merge** these rules into any existing Firestore rules rather than replacing the file.
+
 ```
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    function signedIn() { return request.auth != null; }
+    // A real Reigknight team member = signed in with email/password (NOT anonymous)
+    function isTeam() {
+      return request.auth != null
+        && request.auth.token.firebase.sign_in_provider == 'password';
+    }
 
-    match /venues/{id}         { allow read, write: if signedIn(); }
-    match /inventoryItems/{id} { allow read, write: if signedIn(); }
-    match /people/{id}         { allow read, write: if signedIn(); }
-    match /events/{id}         { allow read, write: if signedIn(); }
-    match /reservations/{id}   { allow read, write: if signedIn(); }
-    match /tasks/{id}          { allow read, write: if signedIn(); }
+    match /venues/{id}         { allow read, write: if isTeam(); }
+    match /inventoryItems/{id} { allow read, write: if isTeam(); }
+    match /people/{id}         { allow read, write: if isTeam(); }
+    match /events/{id}         { allow read, write: if isTeam(); }
+    match /reservations/{id}   { allow read, write: if isTeam(); }
+    match /tasks/{id}          { allow read, write: if isTeam(); }
 
     match /publicViews/{token} {
       allow get:   if true;      // anyone with the unguessable token can read this one doc
       allow list:  if false;     // but cannot enumerate the collection
-      allow write: if signedIn();
+      allow write: if isTeam();
     }
   }
 }
 ```
 
-**Storage rules** (inventory photos): allow read (public, so images show in read-only views) and write only when signed in.
+**Storage rules** (inventory photos): allow public read (so images show in read-only views) and write only for team members.
 ```
 match /inventory/{allPaths=**} {
   allow read: if true;
-  allow write: if request.auth != null;
+  allow write: if request.auth != null
+    && request.auth.token.firebase.sign_in_provider == 'password';
 }
 ```
+
+---
+
+## Inventory reference lists (seed constants)
+
+Create `src/constants/inventory.ts` with the exact arrays below. All category / material / color / condition dropdowns read from these constants — so adding one later is one file change, no code hunting.
+
+```ts
+export const CATEGORIES = [
+  "Tables","Seating","Linens and Textiles","Tabletop and Place Settings",
+  "Serving and Catering Equipment","Bars and Beverage Stations",
+  "Tents and Structures","Flooring and Ground Cover","Lighting",
+  "Audio, Video and Presentation","Stages, Truss and Production",
+  "Backdrops, Walls and Draping","Decor and Styling","Florals and Greenery",
+  "Photo Booths and Interactive Media","Games and Entertainment",
+  "Inflatables and Children's Attractions","Signage and Branding",
+  "Crowd Control and Site Management","Power and Electrical",
+  "Safety and Accessibility","Outdoor Furniture and Amenities",
+  "Holiday and Seasonal Decor"
+] as const;
+
+export const COLORS = [
+  "White","Black","Ivory","Beige","Natural","Brown","Gray","Gold","Silver",
+  "Rose Gold","Clear","Red","Burgundy","Orange","Yellow","Green","Sage",
+  "Emerald","Blue","Navy","Purple","Lavender","Pink","Blush","Multicolor",
+  "Custom"        // "Custom" opens a free-text field (colorCustom)
+] as const;
+
+export const MATERIALS = [
+  "Wood","Metal","Aluminum","Steel","Stainless Steel","Acrylic","Glass",
+  "Ceramic","Porcelain","Plastic","Resin","Rattan","Wicker","Fabric","Vinyl",
+  "Leather","Faux Leather","Velvet","Linen","Polyester","Cotton","Rubber",
+  "Turf","Composite","Paper","Foam","Mixed Materials","Other"
+] as const;
+
+export const CONDITIONS = [
+  "New","Excellent","Good","Fair","Service Required","Damaged","Retired"
+] as const;
+
+export const UNIT_STATUSES = [
+  "good","needsRepair","needsReplacement"
+] as const;
+
+export const UNIT_STATUS_LABELS = {
+  good: "Good",
+  needsRepair: "Needs Repair",
+  needsReplacement: "Needs Replacement"
+};
+```
+
+---
+
+## "Start from a common item" preset picker
+
+At the top of the **Add Item** form, a searchable dropdown lets the user pick a common rental item as a starting template — the "state dropdown" analogy. Selecting one autofills `name`, `category`, typical `material`, and a starter `description`; the user can then edit any field and add photos/quantity before saving.
+
+Create `src/constants/itemPresets.ts` with a seed list of common rental items — expand freely:
+
+```ts
+export const ITEM_PRESETS = [
+  { name: "60in Round Table",          category: "Tables",  material: "Wood",    description: "60-inch round banquet table, seats 8." },
+  { name: "8ft Rectangle Table",       category: "Tables",  material: "Wood",    description: "8ft rectangular banquet table, seats 8–10." },
+  { name: "Cocktail Table (High-top)", category: "Tables",  material: "Metal",   description: "42in high-top cocktail table." },
+  { name: "Chiavari Chair",            category: "Seating", material: "Wood",    description: "Classic Chiavari ballroom chair with cushion." },
+  { name: "Folding Chair (White)",     category: "Seating", material: "Plastic", description: "White resin folding chair." },
+  { name: "Farmhouse Bench",           category: "Seating", material: "Wood",    description: "Rustic wooden farmhouse bench." },
+  { name: "Linen Tablecloth (120in Round)", category: "Linens and Textiles", material: "Polyester", description: "120in round tablecloth, floor-length on 60in round." },
+  { name: "Cloth Napkin",              category: "Linens and Textiles", material: "Cotton",   description: "Standard cloth dinner napkin." },
+  { name: "Charger Plate",             category: "Tabletop and Place Settings", material: "Acrylic", description: "Decorative under-plate charger." },
+  { name: "Dinner Plate",              category: "Tabletop and Place Settings", material: "Porcelain", description: "Standard 10in dinner plate." },
+  { name: "Wine Glass",                category: "Tabletop and Place Settings", material: "Glass",  description: "Standard stemmed wine glass." },
+  { name: "Champagne Flute",           category: "Tabletop and Place Settings", material: "Glass",  description: "Standard champagne flute." },
+  { name: "Chafing Dish",              category: "Serving and Catering Equipment", material: "Stainless Steel", description: "Full-size chafing dish with fuel tray." },
+  { name: "Beverage Dispenser",        category: "Bars and Beverage Stations", material: "Glass", description: "3-gallon glass beverage dispenser with spigot." },
+  { name: "Portable Bar",              category: "Bars and Beverage Stations", material: "Wood",  description: "Freestanding portable event bar." },
+  { name: "20x20 Frame Tent",          category: "Tents and Structures", material: "Metal", description: "20x20 white frame tent." },
+  { name: "Dance Floor Panel",         category: "Flooring and Ground Cover", material: "Wood", description: "3x3 wooden dance floor panel." },
+  { name: "String Lights (50ft)",      category: "Lighting", material: "Other", description: "50ft warm-white outdoor string lights." },
+  { name: "Uplight",                   category: "Lighting", material: "Metal", description: "LED wireless uplight, color-changing." },
+  { name: "Wireless Microphone",       category: "Audio, Video and Presentation", material: "Metal", description: "Handheld wireless microphone with receiver." },
+  { name: "PA Speaker",                category: "Audio, Video and Presentation", material: "Plastic", description: "Powered PA speaker on stand." },
+  { name: "Backdrop Frame",            category: "Backdrops, Walls and Draping", material: "Aluminum", description: "Adjustable pipe-and-drape backdrop frame." },
+  { name: "Draping Panel",             category: "Backdrops, Walls and Draping", material: "Polyester", description: "Sheer draping panel." },
+  { name: "Giant Connect 4",           category: "Games and Entertainment", material: "Wood",  description: "Yard-size Giant Connect 4 game." },
+  { name: "Cornhole Set",              category: "Games and Entertainment", material: "Wood",  description: "Regulation cornhole board set with bags." },
+  { name: "Ring Toss",                 category: "Games and Entertainment", material: "Wood",  description: "Yard ring toss game." },
+  { name: "A-Frame Sign",              category: "Signage and Branding", material: "Metal", description: "A-frame sidewalk sign." },
+  { name: "Stanchion (Velvet Rope)",   category: "Crowd Control and Site Management", material: "Metal", description: "Stanchion post with velvet rope." },
+  { name: "Extension Cord (100ft)",    category: "Power and Electrical", material: "Rubber", description: "100ft heavy-duty outdoor extension cord." },
+  { name: "Adirondack Chair",          category: "Outdoor Furniture and Amenities", material: "Wood", description: "Classic outdoor Adirondack chair." }
+] as const;
+```
+
+UX: at the top of the Add-Item form, an autocomplete/combobox labeled **"Start from a common item (optional)"**. Selecting one prefills the fields below. Typing a name that isn't in the list is fine — the user just fills the form from scratch. A subtle "Save as preset" action (admin-only) can be added later to grow this list from real inventory.
+
+---
+
+## Status flagging (needs-attention UI)
+
+Any item where `needsRepair + needsReplacement > 0` must be visually flagged so it can't be missed in a list.
+
+**In list rows (desktop and mobile):**
+- Show a colored **pill badge** on the row: amber "5 need repair" when only `needsRepair > 0`; red "1 needs replacement" when `needsReplacement > 0`; red takes precedence if both apply, with the amber count shown after (e.g., "1 replace • 5 repair").
+- Add a subtle **left border stripe** on the row in the same color (2–3px), so at a glance you can scan a table on a phone and see which need work. Keep the row background white — the stripe is the signal, staying with the clean/white theme.
+- Include a top-of-list toggle: **"Show only items needing attention."**
+
+**In item detail view:**
+- A dedicated **Status** panel with three number inputs (Good / Needs Repair / Needs Replacement) that auto-balance against `totalQuantity`. Changing "Needs Repair" from 5→3 auto-adds 2 back to Good.
+- Direct actions: **"Mark N repaired"** (moves from needsRepair→good), **"Mark N replaced"** (removes from needsReplacement and, if truly replaced with new units, offers to add that many back to good).
+
+**Double-booking impact:** the availability calculation must use `availableForRental = totalQuantity − needsRepair − needsReplacement`, so units marked out-of-service can't accidentally be assigned to an event.
+
+---
+
+## Mobile-friendliness (baseline requirement)
+
+The app is used by staff on their phones during setup, teardown, and inventory audits. Non-negotiable:
+- Every screen (login, item list, item detail, event list, event detail, add/edit forms, CSV import preview) must be usable and legible on a **375px-wide viewport** (iPhone SE size) without horizontal scroll.
+- **Typography on mobile — the current build is too small.** Set a minimum readable size across the app:
+  - Body text: **16px** (Tailwind `text-base`) — this also prevents iOS from auto-zooming on form inputs.
+  - Form input text and labels: **16px minimum.**
+  - Table/list row primary text (item name, event name): **16px** — secondary/meta text no smaller than **14px** (`text-sm`).
+  - Section headings: **18–20px** (`text-lg`/`text-xl`).
+  - Never go below `text-sm` (14px) anywhere on mobile; nothing at `text-xs` on mobile screens.
+  - Use responsive utilities (`text-base md:text-sm`) if desktop density needs to be tighter — but *always* err larger on mobile.
+- Item list on mobile: card layout, not a wide table. Photo + name + category + status badge + attention stripe visible without tapping.
+- Number inputs use the numeric keypad (`inputMode="numeric"`).
+- Tap targets minimum 44×44 px.
+- Filters collapse into a bottom sheet on mobile.
+
+---
+
+## Mobile-first inventory workflow (staff on their phones)
+
+This is how the team will use the app most often: standing in the warehouse with a phone, updating counts or a status and snapping a photo. Get this workflow right — it's the app's main job on a small screen.
+
+**Photo capture — tap once, camera opens, done:**
+- The photo picker on both the Add-Item and Edit-Item forms must trigger the phone's **native camera** directly.
+  - Implementation: `<input type="file" accept="image/*" capture="environment" multiple>` — `capture="environment"` opens the rear camera immediately on mobile; falls back to the file picker on desktop.
+  - Offer two clear buttons in the form: **"Take Photo"** (uses `capture`) and **"Choose from Library"** (same input without `capture`) so staff aren't forced into the camera when they have shots already saved.
+- **Client-side image compression before upload.** Phone photos are 3–8 MB each; that wastes Cloud Storage quota and makes mobile uploads slow on jobsite cell service. Compress to a max 1600px long edge at ~80% JPEG quality before uploading. Use `browser-image-compression` (npm) or a small canvas resize routine. Show original vs. compressed size briefly (e.g. "4.2 MB → 380 KB") so staff can see it's working.
+- **Progress + resilience:** show a per-photo upload progress bar. If an upload fails (spotty warehouse Wi-Fi), keep the file in the form and offer a one-tap **Retry** — never a silent failure.
+- **Multi-photo capture in one flow:** allow selecting/capturing several photos at once and uploading in parallel. After capture, show thumbnails with drag-to-reorder and a "Set as primary" star on each.
+- **EXIF orientation:** strip or auto-rotate so portrait phone shots don't display sideways.
+- **Delete/replace** a photo from the item detail on mobile in ≤ 2 taps.
+
+**Quick-edit from the item list (no full form needed):**
+
+Most phone updates are tiny — "we broke 2 more chairs" — and shouldn't require opening the full edit form. On each item card in the list, add a **⋯ menu** with:
+- **Update status counts** — opens a compact sheet with just Good / Needs Repair / Needs Replacement number inputs, auto-balancing, and Save.
+- **Add photo** — opens the camera directly, uploads, attaches to the item, done.
+- **Adjust quantity** — a +/− stepper for `totalQuantity`.
+
+These write straight to Firestore without leaving the list. This is the single biggest workflow win for phone use.
+
+**Camera permission handling:**
+- The first time the camera is invoked, iOS/Android prompt for permission. If the user denies, show a plain-language message with a link to Settings — not a silent failure. The "Choose from Library" button still works even if camera permission was denied.
+- On desktop browsers without a camera, the "Take Photo" button hides itself.
+
+**PWA-ish niceties (small effort, big feel):**
+- Add a proper web-app manifest and app icon so staff can "Add to Home Screen" and launch the app fullscreen from their phones. No native app needed.
+- No offline mode in v1 (real complexity) — but display a clear **"You're offline — changes will fail"** banner if the network drops, so nobody thinks an unsaved update was saved.
 
 ---
 
@@ -230,26 +430,15 @@ match /inventory/{allPaths=**} {
 
 The team must **always** be able to export the full inventory list and re-import updates — same muscle memory as the check-in app's CSV tools.
 
-**Export:** a one-click download of all inventory items as **CSV** (Excel-compatible). Columns: `id, name, description, tags, color, totalQuantity, location, model, sku, photoUrls`. Tags are joined with `;` in the cell (e.g., `rustic;outdoor;gold`). `id` is included so an exported file can be edited and re-imported to update the exact same records.
+**Export:** a one-click download of all inventory items as **CSV** (Excel-compatible). Columns: `id, name, description, category, material, color, colorCustom, tags, totalQuantity, location, bin, condition, statusGood, statusNeedsRepair, statusNeedsReplacement, model, photoUrls`. Tags are joined with `;` in the cell (e.g., `rustic;outdoor;boho`). `id` is included so an exported file can be edited and re-imported to update the exact same records.
 
 **Import (upsert):** upload a CSV to bulk add/update items in one pass:
-- If a row has an `id` (or a matching `sku`), **update** that existing item's fields.
-- If a row has no `id`/`sku` match, **create** a new item.
+- If a row has an `id`, **update** that existing item's fields.
+- If a row has no `id` (or the `id` doesn't match anything), **create** a new item.
 - Show a **preview/confirm screen** before writing — a count of "X updated, Y created," with any bad rows flagged — so a typo can't silently overwrite the catalog.
 - Parse CSV client-side (e.g., PapaParse) and write with a Firestore batch.
 
 **Photo caveat (state plainly in the UI):** import/export covers all *text* fields. Photos are binary and can't ride along in a CSV — the export lists existing photo URLs for reference, but adding or changing images is done through the app's upload. Don't imply photos import from CSV.
-
----
-
-## Barcode / QR (optional, later — the honest version)
-
-Two different ideas often get lumped together as "barcodes"; they're worth separating:
-
-- **Scanning your own labels (recommended, free, in-browser).** Generate a QR code or barcode per item that encodes its `id`/`sku`, print labels, and stick them on the items or storage bins. Staff scan with a phone camera to instantly pull up an item — to locate it, check its available quantity, or assign it to an event. This is the Sortly-style workflow and it's genuinely useful for a physical inventory spread across storage areas. It works with a browser barcode library (e.g., ZXing / `@zxing/library`, or the native `BarcodeDetector` API where supported), at no extra cost.
-- **Auto-filling item info from a global product database (skip for now).** Scanning a retail UPC to auto-populate a product's name/specs relies on third-party lookup APIs that are usually paid or rate-limited — and most of your inventory (custom tables, décor, rentals) has no standard retail barcode anyway. Low payoff for this use case.
-
-Recommendation: keep the `sku` field now so items are label-ready, and add **generate-label + camera-scan-to-find** as a later enhancement once the core app is solid. Skip global product-database lookup.
 
 ---
 
@@ -265,6 +454,15 @@ Because this lives in the **same Firebase project** as the check-in app, the eve
 
 **Phase 1 — Core:** Firebase Auth login; CRUD for venues, inventory items (full field set, with photo upload to Cloud Storage); inventory list with **tag/color/location filters** and **CSV export + import (upsert)**; events; assign inventory to events via reservations with **both double-booking checks live**. White, clean UI.
 
+**Phase 1.5 — Inventory upgrades (do this before Phase 2):**
+- Add `src/constants/inventory.ts` (CATEGORIES / COLORS / MATERIALS / CONDITIONS / UNIT_STATUSES) and `src/constants/itemPresets.ts` (common items).
+- Migrate the existing `inventoryItems` schema to the expanded model — new fields (`category`, `material`, `color` + `colorCustom`, `condition`, `statusBreakdown`); rewrite the Add/Edit form to use dropdowns from the constants and a **"Start from a common item"** picker at the top of the form.
+- Enforce `good + needsRepair + needsReplacement === totalQuantity` with auto-balancing.
+- Update the availability calculation to use `availableForRental = totalQuantity − needsRepair − needsReplacement`.
+- Add the **needs-attention flagging** (row stripe, badge, "Show only items needing attention" toggle) to the list view.
+- Verify **mobile layout** end-to-end at a 375px viewport (item list becomes cards; filters collapse into a bottom sheet; number inputs use numeric keypad; tap targets ≥44px).
+- Update the CSV export/import to the new columns.
+
 **Phase 2 — Agenda/tasks:** per-event task list with type, assignee, due date, status; mark-complete; filter by date / type / person; "My Tasks" view.
 
 **Phase 3 — Read-only views:** `shareToken` + `publicViews` snapshot docs + `publishEventSnapshot()`; a clean per-event **progress dashboard** (status, % tasks done, outstanding items by person/type/date, assigned inventory). No login, no edit controls.
@@ -273,7 +471,6 @@ Because this lives in the **same Firebase project** as the check-in app, the eve
 
 **Later (not now):**
 - Refactor the check-in app itself to hold **multiple events at once** (tabs), instead of resetting the page per event. Each event tab maps cleanly to a `checkinEventId` here, so this platform links straight to the right one.
-- Barcode/QR **label generation + camera scan-to-find** for inventory (see the Barcode section).
 
 ---
 

@@ -39,19 +39,21 @@ export function VenuesPage() {
     <div className="mx-auto max-w-4xl">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-charcoal">Venues</h1>
-        <Button onClick={openCreate}>+ Add venue</Button>
+        <Button onClick={openCreate} className="min-h-[44px]">
+          + Add venue
+        </Button>
       </div>
 
       <ErrorNotice message={error} />
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-base text-gray-500">Loading…</p>
       ) : venues.length === 0 ? (
-        <p className="text-sm text-gray-500">No venues yet. Add your first one.</p>
+        <p className="text-base text-gray-500">No venues yet. Add your first one.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-base">
+            <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-4 py-2.5">Description</th>
@@ -63,18 +65,18 @@ export function VenuesPage() {
               {venues.map((venue) => (
                 <tr key={venue.id}>
                   <td className="px-4 py-3 font-medium text-charcoal">{venue.name}</td>
-                  <td className="max-w-xs truncate px-4 py-3 text-gray-600">{venue.description}</td>
-                  <td className="px-4 py-3 text-gray-600">{venue.capacity ?? '—'}</td>
+                  <td className="max-w-xs truncate px-4 py-3 text-sm text-gray-600">{venue.description}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{venue.capacity ?? '—'}</td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openEdit(venue)}
-                      className="mr-3 text-sm font-medium text-regal hover:underline"
+                      className="mr-1 min-h-[44px] px-2 text-base font-medium text-regal hover:underline"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(venue)}
-                      className="text-sm font-medium text-red-600 hover:underline"
+                      className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
                     >
                       Delete
                     </button>

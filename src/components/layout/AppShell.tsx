@@ -1,6 +1,7 @@
-import type { ReactNode } from 'react'
+import { useState, type ReactNode } from 'react'
 import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
+import { BottomSheet } from '../ui/BottomSheet'
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -11,6 +12,7 @@ const navItems = [
 
 export function AppShell({ children }: { children: ReactNode }) {
   const { user, logout } = useAuth()
+  const [menuOpen, setMenuOpen] = useState(false)
 
   return (
     <div className="flex min-h-screen bg-surface">
@@ -37,29 +39,21 @@ export function AppShell({ children }: { children: ReactNode }) {
       </aside>
 
       <div className="flex flex-1 flex-col">
-        <header className="flex items-center justify-between border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
-          <span className="text-sm font-semibold text-charcoal sm:hidden">Reigknight</span>
-          <nav className="flex gap-1 sm:hidden">
-            {navItems.map((item) => (
-              <NavLink
-                key={item.to}
-                to={item.to}
-                end={item.end}
-                className={({ isActive }) =>
-                  `rounded-md px-2 py-1 text-xs font-medium ${
-                    isActive ? 'bg-regal-light text-regal' : 'text-charcoal'
-                  }`
-                }
-              >
-                {item.label}
-              </NavLink>
-            ))}
-          </nav>
+        <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
+          <button
+            type="button"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
+            className="flex h-11 w-11 items-center justify-center rounded-md text-charcoal sm:hidden"
+          >
+            <span className="text-2xl leading-none">☰</span>
+          </button>
+          <span className="text-base font-semibold text-charcoal sm:hidden">Reigknight</span>
           <div className="ml-auto flex items-center gap-3">
             <span className="hidden text-sm text-gray-500 sm:inline">{user?.email}</span>
             <button
               onClick={() => logout()}
-              className="rounded-md border border-gray-300 px-3 py-1.5 text-sm font-medium text-charcoal hover:bg-surface"
+              className="min-h-[44px] rounded-md border border-gray-300 px-3 text-base font-medium text-charcoal hover:bg-surface"
             >
               Sign out
             </button>
@@ -67,6 +61,27 @@ export function AppShell({ children }: { children: ReactNode }) {
         </header>
         <main className="flex-1 px-4 py-6 sm:px-8">{children}</main>
       </div>
+
+      <BottomSheet open={menuOpen} onClose={() => setMenuOpen(false)} title="Menu">
+        <nav className="flex flex-col gap-1">
+          {navItems.map((item) => (
+            <NavLink
+              key={item.to}
+              to={item.to}
+              end={item.end}
+              onClick={() => setMenuOpen(false)}
+              className={({ isActive }) =>
+                `flex min-h-[44px] items-center rounded-md px-3 text-base font-medium ${
+                  isActive ? 'bg-regal-light text-regal' : 'text-charcoal hover:bg-surface'
+                }`
+              }
+            >
+              {item.label}
+            </NavLink>
+          ))}
+          <div className="mt-2 border-t border-gray-200 pt-2 text-sm text-gray-500">{user?.email}</div>
+        </nav>
+      </BottomSheet>
     </div>
   )
 }

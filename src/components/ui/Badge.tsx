@@ -9,7 +9,7 @@ export function Badge({ children, tone = 'neutral' }: { children: ReactNode; ton
     amber: 'bg-amber-50 text-amber-700 border border-amber-200',
   }
   return (
-    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-xs font-medium ${tones[tone]}`}>
+    <span className={`inline-flex items-center rounded-full px-2 py-0.5 text-sm font-medium ${tones[tone]}`}>
       {children}
     </span>
   )

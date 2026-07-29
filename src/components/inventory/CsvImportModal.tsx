@@ -66,10 +66,15 @@ export function CsvImportModal({ open, onClose, items }: CsvImportModalProps) {
         const batch = writeBatch(db)
         for (const entry of chunk) {
           if (entry.action === 'update' && entry.matchedId) {
-            batch.update(doc(db, 'inventoryItems', entry.matchedId), { ...entry.data })
+            batch.update(doc(db, 'inventoryItems', entry.matchedId), { ...entry.data, updatedAt: serverTimestamp() })
           } else {
             const ref = doc(collection(db, 'inventoryItems'))
-            batch.set(ref, { ...entry.data, photos: [], createdAt: serverTimestamp() })
+            batch.set(ref, {
+              ...entry.data,
+              photos: [],
+              createdAt: serverTimestamp(),
+              updatedAt: serverTimestamp(),
+            })
           }
         }
         await batch.commit()
@@ -86,15 +91,14 @@ export function CsvImportModal({ open, onClose, items }: CsvImportModalProps) {
   return (
     <Modal open={open} onClose={handleClose} title="Import inventory CSV" wide>
       <div className="flex flex-col gap-4">
-        <p className="text-sm text-gray-600">
+        <p className="text-base text-gray-600">
           Upload a CSV exported from this app (or matching its columns). Rows with a matching{' '}
-          <code className="rounded bg-surface px-1">id</code> or <code className="rounded bg-surface px-1">sku</code>{' '}
-          update that item; everything else creates a new one. Photos aren&apos;t imported from CSV — add those in the
-          app after import.
+          <code className="rounded bg-surface px-1">id</code> update that item; everything else creates a new one.
+          Photos aren&apos;t imported from CSV — add those in the app after import.
         </p>
 
         {result ? (
-          <div className="rounded-md border border-green-200 bg-green-50 p-4 text-sm text-green-800">
+          <div className="rounded-md border border-green-200 bg-green-50 p-4 text-base text-green-800">
             Import complete: {result.created} created, {result.updated} updated.
           </div>
         ) : (
@@ -104,12 +108,13 @@ export function CsvImportModal({ open, onClose, items }: CsvImportModalProps) {
               type="file"
               accept=".csv,text/csv"
               onChange={(e) => handleFile(e.target.files?.[0])}
+              className="text-base"
             />
-            {error && <p className="text-sm text-red-600">{error}</p>}
+            {error && <p className="text-base text-red-600">{error}</p>}
 
             {plan && (
               <>
-                <div className="flex gap-4 text-sm">
+                <div className="flex flex-wrap gap-x-4 gap-y-1 text-sm">
                   <span className="font-medium text-charcoal">{fileName}</span>
                   <span className="text-green-700">{toCreate.length} to create</span>
                   <span className="text-regal">{toUpdate.length} to update</span>
@@ -119,7 +124,7 @@ export function CsvImportModal({ open, onClose, items }: CsvImportModalProps) {
                 </div>
 
                 <div className="max-h-72 overflow-auto rounded-md border border-gray-200">
-                  <table className="w-full text-xs">
+                  <table className="w-full text-sm">
                     <thead className="sticky top-0 bg-surface text-left uppercase tracking-wide text-gray-500">
                       <tr>
                         <th className="px-3 py-2">Row</th>

@@ -26,12 +26,12 @@ export function EventDetailPage() {
     setEditOpen(false)
   }
 
-  if (loading) return <p className="text-sm text-gray-500">Loading…</p>
+  if (loading) return <p className="text-base text-gray-500">Loading…</p>
   if (!event) {
     return (
       <div>
-        <p className="text-sm text-gray-500">Event not found.</p>
-        <Link to="/events" className="text-sm font-medium text-regal hover:underline">
+        <p className="text-base text-gray-500">Event not found.</p>
+        <Link to="/events" className="text-base font-medium text-regal hover:underline">
           Back to events
         </Link>
       </div>
@@ -40,14 +40,14 @@ export function EventDetailPage() {
 
   return (
     <div className="mx-auto max-w-3xl">
-      <Link to="/events" className="text-sm text-gray-500 hover:underline">
+      <Link to="/events" className="text-base text-gray-500 hover:underline">
         ← Events
       </Link>
 
       <div className="mt-2 mb-6 flex items-start justify-between">
         <div>
           <h1 className="text-xl font-semibold text-charcoal">{event.name}</h1>
-          <p className="mt-1 text-sm text-gray-600">
+          <p className="mt-1 text-base text-gray-600">
             {venue?.name ?? 'Unknown venue'} · {formatTimestamp(event.startAt)} – {formatTimestamp(event.endAt)}
           </p>
           <div className="mt-2">
@@ -60,7 +60,7 @@ export function EventDetailPage() {
       </div>
 
       {(event.clientName || event.clientContact || event.notes) && (
-        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 text-sm">
+        <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4 text-base">
           {event.clientName && (
             <p>
               <span className="font-medium text-charcoal">Client:</span> {event.clientName}

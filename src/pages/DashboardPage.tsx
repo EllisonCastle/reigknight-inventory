@@ -43,13 +43,13 @@ export function DashboardPage() {
         <StatTile label="Upcoming events" value={upcoming.length} />
       </div>
 
-      <h2 className="mb-3 text-sm font-semibold text-charcoal">Next up</h2>
+      <h2 className="mb-3 text-lg font-semibold text-charcoal">Next up</h2>
       {upcoming.length === 0 ? (
-        <p className="text-sm text-gray-500">Nothing on the calendar right now.</p>
+        <p className="text-base text-gray-500">Nothing on the calendar right now.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-base">
+            <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-4 py-2.5">Venue</th>
@@ -65,8 +65,8 @@ export function DashboardPage() {
                       {event.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{venueName(event.venueId)}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatTimestamp(event.startAt)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{venueName(event.venueId)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{formatTimestamp(event.startAt)}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={event.status} />
                   </td>

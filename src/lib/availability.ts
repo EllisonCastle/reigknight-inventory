@@ -69,9 +69,15 @@ export interface InventoryAvailability {
   isAvailable: boolean
 }
 
+/**
+ * `availableForRentalCeiling` is totalQuantity minus units marked Needs Repair /
+ * Needs Replacement (see src/lib/inventoryStatus.ts) — units out of service can't
+ * be assigned to an event even if no one else has reserved them yet.
+ */
 export async function checkInventoryAvailability(
   itemId: string,
   totalQuantity: number,
+  availableForRentalCeiling: number,
   from: Timestamp,
   to: Timestamp,
   requestedQty: number,
@@ -98,7 +104,7 @@ export async function checkInventoryAvailability(
     }
   })
 
-  const available = totalQuantity - reserved
+  const available = availableForRentalCeiling - reserved
   return {
     totalQuantity,
     reserved,

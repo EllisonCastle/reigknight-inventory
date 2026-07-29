@@ -5,12 +5,19 @@ const CSV_COLUMNS = [
   'id',
   'name',
   'description',
-  'tags',
+  'category',
+  'material',
   'color',
+  'colorCustom',
+  'tags',
   'totalQuantity',
   'location',
+  'bin',
+  'condition',
+  'statusGood',
+  'statusNeedsRepair',
+  'statusNeedsReplacement',
   'model',
-  'sku',
   'photoUrls',
 ] as const
 
@@ -19,12 +26,19 @@ export function exportInventoryCsv(items: InventoryItem[]): string {
     id: i.id,
     name: i.name,
     description: i.description,
-    tags: (i.tags || []).join(';'),
+    category: i.category,
+    material: i.material,
     color: i.color,
+    colorCustom: i.colorCustom,
+    tags: (i.tags || []).join(';'),
     totalQuantity: i.totalQuantity,
     location: i.location,
+    bin: i.bin,
+    condition: i.condition,
+    statusGood: i.statusBreakdown?.good ?? 0,
+    statusNeedsRepair: i.statusBreakdown?.needsRepair ?? 0,
+    statusNeedsReplacement: i.statusBreakdown?.needsReplacement ?? 0,
     model: i.model,
-    sku: i.sku,
     photoUrls: (i.photos || []).map((p) => p.url).join(';'),
   }))
   return Papa.unparse({ fields: [...CSV_COLUMNS], data: rows })
@@ -62,12 +76,17 @@ export interface ImportPlanEntry {
   data: {
     name: string
     description: string
-    tags: string[]
+    category: string
+    material: string
     color: string
+    colorCustom: string
+    tags: string[]
     totalQuantity: number
     location: string
+    bin: string
+    condition: string
+    statusBreakdown: { good: number; needsRepair: number; needsReplacement: number }
     model: string
-    sku: string
   }
   errors: string[]
 }
@@ -80,30 +99,46 @@ function parseTags(cell: string | undefined): string[] {
     .filter(Boolean)
 }
 
+function parseIntField(raw: string | undefined, fieldLabel: string, errors: string[]): number {
+  const trimmed = (raw ?? '').trim()
+  if (trimmed === '') return 0
+  const n = Number(trimmed)
+  if (Number.isNaN(n)) {
+    errors.push(`${fieldLabel} "${trimmed}" is not a number`)
+    return 0
+  }
+  return n
+}
+
 export function buildImportPlan(
   rows: Record<string, string>[],
   existingItems: InventoryItem[],
 ): ImportPlanEntry[] {
   const byId = new Map(existingItems.map((i) => [i.id, i]))
-  const bySku = new Map(existingItems.filter((i) => i.sku).map((i) => [i.sku, i]))
 
   return rows.map((row, idx) => {
     const errors: string[] = []
     const name = (row.name || '').trim()
     if (!name) errors.push('Missing name')
 
-    const totalQuantityRaw = (row.totalQuantity ?? '').trim()
-    let totalQuantity = 0
-    if (totalQuantityRaw !== '') {
-      totalQuantity = Number(totalQuantityRaw)
-      if (Number.isNaN(totalQuantity)) errors.push(`totalQuantity "${totalQuantityRaw}" is not a number`)
+    const category = (row.category || '').trim()
+    if (!category) errors.push('Missing category')
+
+    const location = (row.location || '').trim()
+    if (!location) errors.push('Missing location')
+
+    const totalQuantity = parseIntField(row.totalQuantity, 'totalQuantity', errors)
+    const good = parseIntField(row.statusGood, 'statusGood', errors)
+    const needsRepair = parseIntField(row.statusNeedsRepair, 'statusNeedsRepair', errors)
+    const needsReplacement = parseIntField(row.statusNeedsReplacement, 'statusNeedsReplacement', errors)
+    if (good + needsRepair + needsReplacement !== totalQuantity) {
+      errors.push(
+        `Status counts (${good} + ${needsRepair} + ${needsReplacement}) don't sum to totalQuantity (${totalQuantity})`,
+      )
     }
 
     const id = (row.id || '').trim()
-    const sku = (row.sku || '').trim()
-    let matched: InventoryItem | undefined
-    if (id && byId.has(id)) matched = byId.get(id)
-    else if (sku && bySku.has(sku)) matched = bySku.get(sku)
+    const matched = id ? byId.get(id) : undefined
 
     return {
       rowNumber: idx + 2,
@@ -112,12 +147,17 @@ export function buildImportPlan(
       data: {
         name,
         description: row.description || '',
-        tags: parseTags(row.tags),
+        category,
+        material: row.material || '',
         color: row.color || '',
+        colorCustom: row.colorCustom || '',
+        tags: parseTags(row.tags),
         totalQuantity,
-        location: row.location || '',
+        location,
+        bin: row.bin || '',
+        condition: row.condition || '',
+        statusBreakdown: { good, needsRepair, needsReplacement },
         model: row.model || '',
-        sku,
       },
       errors,
     }

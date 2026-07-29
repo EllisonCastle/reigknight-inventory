@@ -102,7 +102,7 @@ export function EventForm({ initial, venues, onCancel, onSubmit }: EventFormProp
         </Select>
       </FormRow>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <FormRow label="Start (setup)">
           <Input type="datetime-local" value={startAt} onChange={(e) => setStartAt(e.target.value)} required />
         </FormRow>
@@ -121,7 +121,7 @@ export function EventForm({ initial, venues, onCancel, onSubmit }: EventFormProp
         </Select>
       </FormRow>
 
-      <div className="grid grid-cols-2 gap-4">
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
         <FormRow label="Client name">
           <Input value={clientName} onChange={(e) => setClientName(e.target.value)} />
         </FormRow>
@@ -139,7 +139,7 @@ export function EventForm({ initial, venues, onCancel, onSubmit }: EventFormProp
       </FormRow>
 
       <VenueConflictWarning conflicts={conflicts} />
-      {error && <p className="text-sm text-red-600">{error}</p>}
+      {error && <p className="text-base text-red-600">{error}</p>}
 
       <div className="mt-1 flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={onCancel}>

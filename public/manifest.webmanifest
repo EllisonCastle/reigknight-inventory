@@ -1,0 +1,14 @@
+{
+  "name": "Reigknight",
+  "short_name": "Reigknight",
+  "description": "Event operations: venues, inventory, and events for Ellison Castle.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "fullscreen",
+  "background_color": "#f7f7f8",
+  "theme_color": "#5b2a4a",
+  "icons": [
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any" },
+    { "src": "/icon.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "maskable" }
+  ]
+}
