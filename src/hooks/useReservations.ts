@@ -10,6 +10,7 @@ import {
   where,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
+import { publishEventSnapshot } from '../lib/publishSnapshot'
 import type { Reservation } from '../types'
 
 export function useReservationsForEvent(eventId: string | undefined) {
@@ -37,10 +38,17 @@ export function useReservationsForEvent(eventId: string | undefined) {
     )
   }, [eventId])
 
-  const createReservation = (data: Omit<Reservation, 'id' | 'createdAt'>) =>
-    addDoc(collection(db, 'reservations'), { ...data, createdAt: serverTimestamp() })
+  const createReservation = async (data: Omit<Reservation, 'id' | 'createdAt'>) => {
+    const ref = await addDoc(collection(db, 'reservations'), { ...data, createdAt: serverTimestamp() })
+    await publishEventSnapshot(data.eventId)
+    return ref
+  }
 
-  const deleteReservation = (id: string) => deleteDoc(doc(db, 'reservations', id))
+  const deleteReservation = async (id: string) => {
+    const reservation = reservations.find((r) => r.id === id)
+    await deleteDoc(doc(db, 'reservations', id))
+    if (reservation) await publishEventSnapshot(reservation.eventId)
+  }
 
   return { reservations, loading, error, createReservation, deleteReservation }
 }

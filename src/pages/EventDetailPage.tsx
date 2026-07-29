@@ -19,6 +19,7 @@ export function EventDetailPage() {
   const { items } = useInventoryItems()
   const { people } = usePeople()
   const [editOpen, setEditOpen] = useState(false)
+  const [copied, setCopied] = useState(false)
 
   const event = events.find((e) => e.id === eventId)
   const venue = venues.find((v) => v.id === event?.venueId)
@@ -27,6 +28,14 @@ export function EventDetailPage() {
     if (!event) return
     await updateEvent(event.id, values)
     setEditOpen(false)
+  }
+
+  const shareUrl = event ? `${window.location.origin}/share/${event.shareToken}` : ''
+
+  const handleCopyShareLink = async () => {
+    await navigator.clipboard.writeText(shareUrl)
+    setCopied(true)
+    setTimeout(() => setCopied(false), 2000)
   }
 
   if (loading) return <p className="text-base text-gray-500">Loading…</p>
@@ -77,6 +86,24 @@ export function EventDetailPage() {
           {event.notes && <p className="mt-2 whitespace-pre-wrap text-gray-600">{event.notes}</p>}
         </div>
       )}
+
+      <div className="mb-6 rounded-lg border border-gray-200 bg-white p-4">
+        <h2 className="mb-2 text-lg font-semibold text-charcoal">Share link</h2>
+        <p className="mb-3 text-sm text-gray-500">
+          Read-only progress view — no login required, no edit controls.
+        </p>
+        <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+          <input
+            readOnly
+            value={shareUrl}
+            onFocus={(e) => e.target.select()}
+            className="min-h-[44px] flex-1 rounded-md border border-gray-300 bg-surface px-3 text-base text-gray-700"
+          />
+          <Button type="button" variant="secondary" onClick={handleCopyShareLink}>
+            {copied ? 'Copied!' : 'Copy link'}
+          </Button>
+        </div>
+      </div>
 
       <ReservationManager event={event} items={items} />
 

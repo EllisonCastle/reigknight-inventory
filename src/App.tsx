@@ -12,6 +12,7 @@ import { EventsPage } from './pages/EventsPage'
 import { EventDetailPage } from './pages/EventDetailPage'
 import { PeoplePage } from './pages/PeoplePage'
 import { MyTasksPage } from './pages/MyTasksPage'
+import { PublicEventPage } from './pages/PublicEventPage'
 
 function Protected({ children }: { children: ReactNode }) {
   return (
@@ -27,6 +28,7 @@ export default function App() {
       <BrowserRouter>
         <Routes>
           <Route path="/login" element={<LoginPage />} />
+          <Route path="/share/:shareToken" element={<PublicEventPage />} />
           <Route path="/" element={<Protected><DashboardPage /></Protected>} />
           <Route path="/venues" element={<Protected><VenuesPage /></Protected>} />
           <Route path="/inventory" element={<Protected><InventoryPage /></Protected>} />
