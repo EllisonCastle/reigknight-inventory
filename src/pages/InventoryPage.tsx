@@ -78,6 +78,12 @@ export function InventoryPage() {
     await deleteItem(item.id)
   }
 
+  const handleDiscardDraft = (id: string) => {
+    deleteItem(id).catch(() => {
+      // best-effort cleanup of an abandoned draft item; nothing user-visible needed
+    })
+  }
+
   return (
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
@@ -218,6 +224,7 @@ export function InventoryPage() {
           onCreate={handleCreate}
           onUpdate={handleUpdate}
           onPhotosChange={handlePhotosChange}
+          onDiscardDraft={handleDiscardDraft}
         />
       </Modal>
 

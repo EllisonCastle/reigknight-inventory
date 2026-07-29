@@ -1,4 +1,6 @@
 import type { Timestamp } from 'firebase/firestore'
+import type { PersonRole } from '../constants/people'
+import type { TaskStatus, TaskType } from '../constants/tasks'
 
 export interface Venue {
   id: string
@@ -77,4 +79,29 @@ export interface Reservation {
   reservedTo: Timestamp
   eventStatus: EventStatus
   createdAt: Timestamp | null
+}
+
+export interface Person {
+  id: string
+  fullName: string
+  email: string
+  phone: string
+  role: PersonRole
+  authUid: string
+  active: boolean
+  createdAt: Timestamp | null
+}
+
+export interface TaskDoc {
+  id: string
+  eventId: string
+  title: string
+  description: string
+  taskType: TaskType
+  assigneeId: string
+  dueDate: Timestamp | null
+  status: TaskStatus
+  completedAt: Timestamp | null
+  createdAt: Timestamp | null
+  createdBy: string
 }

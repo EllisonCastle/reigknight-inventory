@@ -3,8 +3,10 @@ import { Link, useParams } from 'react-router-dom'
 import { useEvents } from '../hooks/useEvents'
 import { useVenues } from '../hooks/useVenues'
 import { useInventoryItems } from '../hooks/useInventoryItems'
+import { usePeople } from '../hooks/usePeople'
 import { EventForm, type EventFormFields } from '../components/events/EventForm'
 import { ReservationManager } from '../components/events/ReservationManager'
+import { TaskManager } from '../components/tasks/TaskManager'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { StatusBadge } from '../components/ui/Badge'
@@ -15,6 +17,7 @@ export function EventDetailPage() {
   const { events, loading, updateEvent } = useEvents()
   const { venues } = useVenues()
   const { items } = useInventoryItems()
+  const { people } = usePeople()
   const [editOpen, setEditOpen] = useState(false)
 
   const event = events.find((e) => e.id === eventId)
@@ -76,6 +79,8 @@ export function EventDetailPage() {
       )}
 
       <ReservationManager event={event} items={items} />
+
+      <TaskManager eventId={event.id} people={people} />
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" wide>
         <EventForm initial={event} venues={venues} onCancel={() => setEditOpen(false)} onSubmit={handleSubmit} />

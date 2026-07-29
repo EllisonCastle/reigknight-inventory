@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useRef, useState, type FormEvent } from 'react'
 import { Button } from '../ui/Button'
 import { FormRow, Input, Label, Select, TextArea } from '../ui/Field'
 import { PhotoUploader } from './PhotoUploader'
@@ -32,11 +32,28 @@ interface InventoryFormProps {
   onCreate: (data: InventoryFormFields) => Promise<string>
   onUpdate: (id: string, data: Partial<InventoryFormFields>) => Promise<void>
   onPhotosChange: (id: string, photos: InventoryPhoto[]) => Promise<void>
+  onDiscardDraft: (id: string) => void
 }
 
 const emptyStatus: StatusBreakdown = { good: 0, needsRepair: 0, needsReplacement: 0 }
 
-export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosChange }: InventoryFormProps) {
+const blankDraftFields: InventoryFormFields = {
+  name: '',
+  description: '',
+  category: '',
+  material: '',
+  color: '',
+  colorCustom: '',
+  tags: [],
+  totalQuantity: 0,
+  location: '',
+  bin: '',
+  condition: 'Good',
+  statusBreakdown: emptyStatus,
+  model: '',
+}
+
+export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosChange, onDiscardDraft }: InventoryFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [category, setCategory] = useState(initial?.category ?? '')
@@ -57,6 +74,55 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
   const [photos, setPhotos] = useState<InventoryPhoto[]>(initial?.photos ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // For a brand-new item, a blank draft doc is created immediately on mount so the
+  // photo uploader (which needs a real item id) is available right away instead of
+  // forcing a save-then-reopen round trip. If the user closes without confirming,
+  // the draft is discarded so it never shows up as a real inventory item.
+  const [preparingDraft, setPreparingDraft] = useState(!initial)
+  const [draftError, setDraftError] = useState('')
+  const [confirmed, setConfirmed] = useState(Boolean(initial))
+  const confirmedRef = useRef(confirmed)
+  const savedIdRef = useRef(savedId)
+
+  useEffect(() => {
+    confirmedRef.current = confirmed
+  }, [confirmed])
+
+  const updateSavedId = (id: string | undefined) => {
+    savedIdRef.current = id
+    setSavedId(id)
+  }
+
+  useEffect(() => {
+    if (initial) return
+    let cancelled = false
+
+    onCreate(blankDraftFields)
+      .then((id) => {
+        if (cancelled) {
+          onDiscardDraft(id)
+        } else {
+          updateSavedId(id)
+        }
+      })
+      .catch(() => {
+        if (!cancelled) {
+          setDraftError('Photo upload will be ready right after you save.')
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setPreparingDraft(false)
+      })
+
+    return () => {
+      cancelled = true
+      if (!confirmedRef.current && savedIdRef.current) {
+        onDiscardDraft(savedIdRef.current)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
 
   const handlePresetSelect = (preset: ItemPreset) => {
     setName(preset.name)
@@ -111,8 +177,9 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
         await onUpdate(savedId, fields)
       } else {
         const id = await onCreate(fields)
-        setSavedId(id)
+        updateSavedId(id)
       }
+      setConfirmed(true)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -227,10 +294,10 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
 
       <div className="mt-1 flex justify-end gap-2">
         <Button type="button" variant="secondary" onClick={onCancel} className="min-h-[44px]">
-          {savedId ? 'Close' : 'Cancel'}
+          {confirmed ? 'Close' : 'Cancel'}
         </Button>
-        <Button type="submit" disabled={saving} className="min-h-[44px]">
-          {saving ? 'Saving…' : savedId ? 'Save changes' : 'Create item'}
+        <Button type="submit" disabled={saving || preparingDraft} className="min-h-[44px]">
+          {preparingDraft ? 'Preparing…' : saving ? 'Saving…' : confirmed ? 'Save changes' : 'Create item'}
         </Button>
       </div>
 
@@ -238,8 +305,10 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
         <p className="mb-2 text-base font-medium text-charcoal">Photos</p>
         {savedId ? (
           <PhotoUploader itemId={savedId} photos={photos} onChange={handlePhotosChange} />
+        ) : preparingDraft ? (
+          <p className="text-base text-gray-500">Preparing photo upload…</p>
         ) : (
-          <p className="text-base text-gray-500">Create the item first, then add photos.</p>
+          <p className="text-base text-gray-500">{draftError || 'Create the item first, then add photos.'}</p>
         )}
       </div>
     </form>
