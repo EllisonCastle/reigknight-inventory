@@ -1,6 +1,7 @@
 import type { Timestamp } from 'firebase/firestore'
 import type { PersonRole } from '../constants/people'
 import type { TaskStatus, TaskType } from '../constants/tasks'
+import type { AssigneeType } from '../constants/agenda'
 
 export interface Venue {
   id: string
@@ -106,6 +107,35 @@ export interface TaskDoc {
   createdBy: string
 }
 
+export interface VendorDoc {
+  id: string
+  name: string
+  contact: string
+  phone: string
+  email: string
+  notes: string
+  createdAt: Timestamp | null
+}
+
+/** agendaItems/{itemId} — one cue in an event's schedule. isPublic controls whether it also appears on the guest agenda. */
+export interface AgendaItemDoc {
+  id: string
+  eventId: string
+  title: string
+  description: string
+  startAt: Timestamp
+  endAt: Timestamp | null
+  isPublic: boolean
+  assigneeType: AssigneeType
+  assigneePersonId: string | null
+  assigneeVendorId: string | null
+  location: string
+  sortOrder: number
+  notes: string
+  createdAt: Timestamp | null
+  createdBy: string
+}
+
 /** publicViews/{shareToken} — a self-contained, read-only snapshot of one event. */
 export interface PublicViewSnapshot {
   eventId: string
@@ -130,6 +160,14 @@ export interface PublicViewSnapshot {
     assigneeNames: string[]
     dueDate: Timestamp | null
     status: TaskStatus
+  }>
+  guestAgenda: Array<{
+    id: string
+    title: string
+    description: string
+    startAt: Timestamp
+    endAt: Timestamp | null
+    location: string
   }>
   checkinSummary: null
   updatedAt: Timestamp

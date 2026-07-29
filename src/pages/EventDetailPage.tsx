@@ -4,9 +4,11 @@ import { useEvents } from '../hooks/useEvents'
 import { useVenues } from '../hooks/useVenues'
 import { useInventoryItems } from '../hooks/useInventoryItems'
 import { usePeople } from '../hooks/usePeople'
+import { useVendors } from '../hooks/useVendors'
 import { EventForm, type EventFormFields } from '../components/events/EventForm'
 import { ReservationManager } from '../components/events/ReservationManager'
 import { TaskManager } from '../components/tasks/TaskManager'
+import { AgendaManager } from '../components/agenda/AgendaManager'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { StatusBadge } from '../components/ui/Badge'
@@ -18,6 +20,7 @@ export function EventDetailPage() {
   const { venues } = useVenues()
   const { items } = useInventoryItems()
   const { people } = usePeople()
+  const { vendors } = useVendors()
   const [editOpen, setEditOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -108,6 +111,8 @@ export function EventDetailPage() {
       <ReservationManager event={event} items={items} />
 
       <TaskManager eventId={event.id} people={people} />
+
+      <AgendaManager event={event} venueName={venue?.name ?? 'Unknown venue'} people={people} vendors={vendors} />
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit event" wide>
         <EventForm initial={event} venues={venues} onCancel={() => setEditOpen(false)} onSubmit={handleSubmit} />
