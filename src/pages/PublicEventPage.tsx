@@ -97,6 +97,25 @@ export function PublicEventPage() {
           <StatTile label="Assigned inventory" value={snapshot.inventory.length} />
         </div>
 
+        {(snapshot.guestAgenda ?? []).length > 0 && (
+          <>
+            <h2 className="mb-3 text-lg font-semibold text-charcoal">Guest agenda</h2>
+            <div className="mb-8 flex flex-col gap-2">
+              {(snapshot.guestAgenda ?? []).map((item) => (
+                <div key={item.id} className="rounded-lg border border-gray-200 bg-white p-3">
+                  <p className="text-base font-medium text-charcoal">{item.title}</p>
+                  <p className="text-sm text-gray-500">
+                    {formatTimestamp(item.startAt)}
+                    {item.endAt ? ` – ${formatTimestamp(item.endAt)}` : ''}
+                    {item.location ? ` · ${item.location}` : ''}
+                  </p>
+                  {item.description && <p className="mt-1 text-sm text-gray-600">{item.description}</p>}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
         <h2 className="mb-3 text-lg font-semibold text-charcoal">Outstanding items</h2>
         {outstanding.length === 0 ? (
           <p className="mb-8 text-base text-gray-500">Nothing outstanding — all tasks are done.</p>

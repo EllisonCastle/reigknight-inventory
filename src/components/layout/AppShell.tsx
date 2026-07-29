@@ -10,6 +10,7 @@ const navItems = [
   { to: '/inventory', label: 'Inventory' },
   { to: '/events', label: 'Events' },
   { to: '/my-tasks', label: 'My Tasks' },
+  { to: '/vendors', label: 'Vendors' },
   { to: '/people', label: 'People', adminOnly: true },
 ]
 

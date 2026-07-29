@@ -467,6 +467,61 @@ Because this lives in the **same Firebase project** as the check-in app, the eve
 
 **Phase 3 — Read-only views:** `shareToken` + `publicViews` snapshot docs + `publishEventSnapshot()`; a clean per-event **progress dashboard** (status, % tasks done, outstanding items by person/type/date, assigned inventory). No login, no edit controls.
 
+**Phase 3.5 — Agendas & vendors (do after Phase 3, before Phase 4):**
+
+Two agenda types per event, sharing one schema, plus a small vendors table.
+
+*Data model:*
+
+`agendaItems/{itemId}`
+```
+{
+  eventId,
+  title,                     // "Cake Cutting", "Speaker Setup", "Food Delivery"
+  description,
+  startAt,                   // Timestamp
+  endAt,                     // Timestamp (nullable — some items are point-in-time)
+  isPublic,                  // true = shows on the guest agenda (public share link); false = working/behind-the-scenes only
+  assigneeType,              // 'person' | 'vendor' | 'none'
+  assigneePersonId,          // people/{personId}, only when assigneeType === 'person'
+  assigneeVendorId,          // vendors/{vendorId}, only when assigneeType === 'vendor'
+  location,                  // free text — "Loading dock", "Great Hall", "Ceremony lawn"
+  sortOrder,                 // int — user-controllable manual sort inside the same time
+  notes,                     // private ops notes, never rendered on the public view
+  createdAt, createdBy
+}
+```
+
+`vendors/{vendorId}`
+```
+{ name, contact, phone, email, notes, createdAt }
+```
+
+*Rules:*
+- **One `agendaItems` collection, one `isPublic` flag** — do not create two separate tables. Guest view is a filter on `isPublic: true`.
+- **`notes` never leaves the app** — it's excluded from the `publicViews` snapshot and from any PDF export a client would see.
+- **Working-agenda items with `isPublic: true`** appear on both the working view *and* the guest agenda automatically — the "publish this cue to the guest agenda" checkbox pattern, no duplicate entry.
+
+*UI:*
+- On the event detail page, a new **Agendas** section with two tabs: **Guest Agenda** (all items where `isPublic: true`, chronological) and **Working Agenda** (all items, chronological, showing `isPublic` items with a badge).
+- A **timeline view** for the working agenda grouped by hour — this is the coordinator's day-of "what's next" screen on their phone.
+- Add-item form: title, description, startAt, endAt (optional), location, assignee (radio: None / Person / Vendor → then dropdown), `isPublic` checkbox, notes (only visible in Working view).
+- Reorder within same time via drag or up/down chevrons (updates `sortOrder`).
+
+*PDF export (both agendas):*
+- **Guest agenda PDF** — clean, minimal, castle-appropriate for the client: event name, date, venue at the top; time-item-location table; no assignees, no notes, no working-only items. Regal accent color from the app theme.
+- **Working agenda PDF** — dense and printable on 8.5×11 for the coordinator's clipboard: every item, times, assignees (person or vendor name + phone), location, notes. `isPublic` items marked with a small icon.
+- Use client-side PDF generation (`jspdf` + `jspdf-autotable` or `pdfmake`) — no backend needed. Both PDFs downloadable from the event page.
+
+*Public share link integration:*
+- Extend `publishEventSnapshot()` to include the guest agenda in the `publicViews/{shareToken}` document.
+- The public read-only dashboard from Phase 3 gains a **Guest Agenda** section rendering that data.
+- **Never** include `isPublic: false` items, `notes`, or assignee fields in the snapshot.
+
+*Vendors mini-CRUD:*
+- A simple **Vendors** page: list, add, edit, delete. Used to populate the vendor dropdown on agenda items.
+- Deleting a vendor with existing assignments prompts to reassign or convert those items to `assigneeType: 'none'`.
+
 **Phase 4 — Check-in:** link `checkinEventId` and surface live check-in stats on the event dashboard from the shared project.
 
 **Later (not now):**

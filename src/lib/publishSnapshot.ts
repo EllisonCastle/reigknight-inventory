@@ -1,6 +1,16 @@
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import { db } from './firebase'
-import type { EventDoc, InventoryItem, InventoryPhoto, Person, PublicViewSnapshot, Reservation, TaskDoc, Venue } from '../types'
+import type {
+  AgendaItemDoc,
+  EventDoc,
+  InventoryItem,
+  InventoryPhoto,
+  Person,
+  PublicViewSnapshot,
+  Reservation,
+  TaskDoc,
+  Venue,
+} from '../types'
 
 function primaryPhotoUrl(photos: InventoryPhoto[]): string | null {
   if (photos.length === 0) return null
@@ -27,15 +37,17 @@ export async function publishEventSnapshot(eventId: string): Promise<void> {
     await updateDoc(eventRef, { shareToken })
   }
 
-  const [venueSnap, tasksSnap, reservationsSnap] = await Promise.all([
+  const [venueSnap, tasksSnap, reservationsSnap, agendaItemsSnap] = await Promise.all([
     event.venueId ? getDoc(doc(db, 'venues', event.venueId)) : Promise.resolve(null),
     getDocs(query(collection(db, 'tasks'), where('eventId', '==', eventId))),
     getDocs(query(collection(db, 'reservations'), where('eventId', '==', eventId))),
+    getDocs(query(collection(db, 'agendaItems'), where('eventId', '==', eventId))),
   ])
   const venueName = venueSnap?.exists() ? (venueSnap.data() as Venue).name : 'Unknown venue'
 
   const tasks = tasksSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as TaskDoc)
   const reservations = reservationsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as Reservation)
+  const agendaItems = agendaItemsSnap.docs.map((d) => ({ id: d.id, ...d.data() }) as AgendaItemDoc)
 
   const assigneeIds = [...new Set(tasks.flatMap((t) => t.assigneeIds))]
   const itemIds = [...new Set(reservations.map((r) => r.itemId))]
@@ -80,6 +92,22 @@ export async function publishEventSnapshot(eventId: string): Promise<void> {
       dueDate: t.dueDate,
       status: t.status,
     })),
+    // Guest agenda: isPublic:true items only. notes and every assignee field are
+    // deliberately excluded — they must never reach the public snapshot.
+    guestAgenda: agendaItems
+      .filter((a) => a.isPublic)
+      .sort((a, b) => {
+        const diff = a.startAt.toMillis() - b.startAt.toMillis()
+        return diff !== 0 ? diff : a.sortOrder - b.sortOrder
+      })
+      .map((a) => ({
+        id: a.id,
+        title: a.title,
+        description: a.description,
+        startAt: a.startAt,
+        endAt: a.endAt,
+        location: a.location,
+      })),
     checkinSummary: null,
     updatedAt: serverTimestamp(),
   }
