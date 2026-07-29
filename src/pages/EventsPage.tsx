@@ -49,25 +49,25 @@ export function EventsPage() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-charcoal">Events</h1>
-        <Button onClick={openCreate} disabled={venues.length === 0}>
+        <Button onClick={openCreate} disabled={venues.length === 0} className="min-h-[44px]">
           + Add event
         </Button>
       </div>
 
       {venues.length === 0 && !loading && (
-        <p className="mb-4 text-sm text-amber-700">Add a venue first before creating an event.</p>
+        <p className="mb-4 text-base text-amber-700">Add a venue first before creating an event.</p>
       )}
 
       <ErrorNotice message={error} />
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-base text-gray-500">Loading…</p>
       ) : events.length === 0 ? (
-        <p className="text-sm text-gray-500">No events yet.</p>
+        <p className="text-base text-gray-500">No events yet.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-left text-xs font-medium uppercase tracking-wide text-gray-500">
+        <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
+          <table className="w-full text-base">
+            <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2.5">Name</th>
                 <th className="px-4 py-2.5">Venue</th>
@@ -85,22 +85,22 @@ export function EventsPage() {
                       {event.name}
                     </Link>
                   </td>
-                  <td className="px-4 py-3 text-gray-600">{venueName(event.venueId)}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatTimestamp(event.startAt)}</td>
-                  <td className="px-4 py-3 text-gray-600">{formatTimestamp(event.endAt)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{venueName(event.venueId)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{formatTimestamp(event.startAt)}</td>
+                  <td className="px-4 py-3 text-sm text-gray-600">{formatTimestamp(event.endAt)}</td>
                   <td className="px-4 py-3">
                     <StatusBadge status={event.status} />
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openEdit(event)}
-                      className="mr-3 text-sm font-medium text-regal hover:underline"
+                      className="mr-1 min-h-[44px] px-2 text-base font-medium text-regal hover:underline"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(event)}
-                      className="text-sm font-medium text-red-600 hover:underline"
+                      className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
                     >
                       Delete
                     </button>

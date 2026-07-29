@@ -1,25 +1,54 @@
 import { useMemo, useState } from 'react'
 import { useInventoryItems } from '../hooks/useInventoryItems'
 import { InventoryForm, type InventoryFormFields } from '../components/inventory/InventoryForm'
-import { InventoryFilters, applyInventoryFilters, type InventoryFilterState } from '../components/inventory/InventoryFilters'
+import {
+  InventoryFilters,
+  applyInventoryFilters,
+  applyInventorySort,
+  emptyInventoryFilters,
+  type InventoryFilterState,
+  type InventorySortKey,
+} from '../components/inventory/InventoryFilters'
 import { CsvExportButton } from '../components/inventory/CsvExportButton'
 import { CsvImportModal } from '../components/inventory/CsvImportModal'
+import { QuickActionsMenu } from '../components/inventory/QuickActionsMenu'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
-import { Badge } from '../components/ui/Badge'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
+import { attentionInfo } from '../lib/inventoryStatus'
 import type { InventoryItem, InventoryPhoto } from '../types'
 
-const emptyFilters: InventoryFilterState = { search: '', tags: [], color: '', location: '' }
+function stripeClass(tone: 'amber' | 'red' | null): string {
+  if (tone === 'red') return 'border-l-red-500'
+  if (tone === 'amber') return 'border-l-amber-500'
+  return 'border-l-transparent'
+}
+
+function AttentionBadge({ tone, label }: { tone: 'amber' | 'red' | null; label: string | null }) {
+  if (!label) return null
+  return (
+    <span
+      className={`inline-flex items-center rounded-full px-2 py-0.5 text-sm font-medium ${
+        tone === 'red' ? 'bg-red-50 text-red-800' : 'bg-amber-50 text-amber-800'
+      }`}
+    >
+      {label}
+    </span>
+  )
+}
 
 export function InventoryPage() {
   const { items, loading, error, createItem, updateItem, deleteItem } = useInventoryItems()
-  const [filters, setFilters] = useState<InventoryFilterState>(emptyFilters)
+  const [filters, setFilters] = useState<InventoryFilterState>(emptyInventoryFilters)
+  const [sort, setSort] = useState<InventorySortKey>('name')
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<InventoryItem | undefined>(undefined)
 
-  const filtered = useMemo(() => applyInventoryFilters(items, filters), [items, filters])
+  const filtered = useMemo(
+    () => applyInventorySort(applyInventoryFilters(items, filters), sort),
+    [items, filters, sort],
+  )
 
   const openCreate = () => {
     setEditing(undefined)
@@ -53,80 +82,133 @@ export function InventoryPage() {
     <div className="mx-auto max-w-6xl">
       <div className="mb-6 flex flex-wrap items-center justify-between gap-2">
         <h1 className="text-xl font-semibold text-charcoal">Inventory</h1>
-        <div className="flex gap-2">
+        <div className="flex flex-wrap gap-2">
           <CsvExportButton items={items} />
-          <Button variant="secondary" onClick={() => setImportOpen(true)}>
+          <Button variant="secondary" onClick={() => setImportOpen(true)} className="min-h-[44px]">
             Import CSV
           </Button>
-          <Button onClick={openCreate}>+ Add item</Button>
+          <Button onClick={openCreate} className="min-h-[44px]">
+            + Add item
+          </Button>
         </div>
       </div>
 
-      <InventoryFilters items={items} value={filters} onChange={setFilters} />
+      <InventoryFilters items={items} value={filters} onChange={setFilters} sort={sort} onSortChange={setSort} />
 
       <ErrorNotice message={error} />
 
       {loading ? (
-        <p className="text-sm text-gray-500">Loading…</p>
+        <p className="text-base text-gray-500">Loading…</p>
       ) : filtered.length === 0 ? (
-        <p className="text-sm text-gray-500">No items match.</p>
+        <p className="text-base text-gray-500">No items match.</p>
       ) : (
-        <div className="overflow-hidden rounded-lg border border-gray-200 bg-white">
-          <table className="w-full text-sm">
-            <thead className="bg-surface text-left text-xs font-medium uppercase tracking-wide text-gray-500">
-              <tr>
-                <th className="px-4 py-2.5" />
-                <th className="px-4 py-2.5">Name</th>
-                <th className="px-4 py-2.5">Tags</th>
-                <th className="px-4 py-2.5">Color</th>
-                <th className="px-4 py-2.5">Location</th>
-                <th className="px-4 py-2.5">Qty owned</th>
-                <th className="px-4 py-2.5" />
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100">
-              {filtered.map((item) => {
-                const primary = item.photos?.find((p) => p.isPrimary) ?? item.photos?.[0]
-                return (
-                  <tr key={item.id}>
-                    <td className="px-4 py-2.5">
-                      {primary ? (
-                        <img src={primary.url} alt="" className="h-10 w-10 rounded object-cover" />
-                      ) : (
-                        <div className="h-10 w-10 rounded bg-surface" />
-                      )}
-                    </td>
-                    <td className="px-4 py-2.5 font-medium text-charcoal">{item.name}</td>
-                    <td className="px-4 py-2.5">
-                      <div className="flex flex-wrap gap-1">
-                        {(item.tags ?? []).map((t) => (
-                          <Badge key={t}>{t}</Badge>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-4 py-2.5 text-gray-600">{item.color || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{item.location || '—'}</td>
-                    <td className="px-4 py-2.5 text-gray-600">{item.totalQuantity}</td>
-                    <td className="px-4 py-2.5 text-right">
-                      <button
-                        onClick={() => openEdit(item)}
-                        className="mr-3 text-sm font-medium text-regal hover:underline"
-                      >
-                        Edit
-                      </button>
-                      <button
-                        onClick={() => handleDelete(item)}
-                        className="text-sm font-medium text-red-600 hover:underline"
-                      >
-                        Delete
-                      </button>
-                    </td>
-                  </tr>
-                )
-              })}
-            </tbody>
-          </table>
-        </div>
+        <>
+          <div className="flex flex-col gap-3 sm:hidden">
+            {filtered.map((item) => {
+              const primary = item.photos?.find((p) => p.isPrimary) ?? item.photos?.[0]
+              const attention = attentionInfo(item)
+              return (
+                <div
+                  key={item.id}
+                  className={`flex gap-3 rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${stripeClass(attention.tone)}`}
+                >
+                  <button type="button" onClick={() => openEdit(item)} className="shrink-0">
+                    {primary ? (
+                      <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
+                    ) : (
+                      <div className="h-14 w-14 rounded bg-surface" />
+                    )}
+                  </button>
+                  <button type="button" onClick={() => openEdit(item)} className="min-w-0 flex-1 text-left">
+                    <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
+                    <p className="truncate text-sm text-gray-500">
+                      {item.category || '—'}
+                      {item.location ? ` · ${item.location}` : ''}
+                    </p>
+                    <div className="mt-1">
+                      <AttentionBadge tone={attention.tone} label={attention.label} />
+                    </div>
+                  </button>
+                  <QuickActionsMenu
+                    item={item}
+                    onUpdate={handleUpdate}
+                    onPhotosChange={handlePhotosChange}
+                    onDelete={handleDelete}
+                  />
+                </div>
+              )
+            })}
+          </div>
+
+          <div className="hidden overflow-hidden rounded-lg border border-gray-200 bg-white sm:block">
+            <table className="w-full text-base">
+              <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
+                <tr>
+                  <th className="px-4 py-2.5" />
+                  <th className="px-4 py-2.5">Name</th>
+                  <th className="px-4 py-2.5">Category</th>
+                  <th className="px-4 py-2.5">Location</th>
+                  <th className="px-4 py-2.5">Qty owned</th>
+                  <th className="px-4 py-2.5">Status</th>
+                  <th className="px-4 py-2.5" />
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-gray-100">
+                {filtered.map((item) => {
+                  const primary = item.photos?.find((p) => p.isPrimary) ?? item.photos?.[0]
+                  const attention = attentionInfo(item)
+                  return (
+                    <tr key={item.id} className={`border-l-4 ${stripeClass(attention.tone)}`}>
+                      <td className="px-4 py-2.5">
+                        {primary ? (
+                          <img src={primary.url} alt="" className="h-10 w-10 rounded object-cover" />
+                        ) : (
+                          <div className="h-10 w-10 rounded bg-surface" />
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 font-medium text-charcoal">{item.name}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{item.category || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">
+                        {item.location || '—'}
+                        {item.bin ? ` · ${item.bin}` : ''}
+                      </td>
+                      <td className="px-4 py-2.5 text-gray-600">{item.totalQuantity}</td>
+                      <td className="px-4 py-2.5">
+                        {attention.label ? (
+                          <AttentionBadge tone={attention.tone} label={attention.label} />
+                        ) : (
+                          <span className="text-sm text-gray-400">—</span>
+                        )}
+                      </td>
+                      <td className="px-4 py-2.5 text-right">
+                        <div className="flex items-center justify-end gap-1">
+                          <button
+                            onClick={() => openEdit(item)}
+                            className="min-h-[44px] px-2 text-base font-medium text-regal hover:underline"
+                          >
+                            Edit
+                          </button>
+                          <button
+                            onClick={() => handleDelete(item)}
+                            className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
+                          >
+                            Delete
+                          </button>
+                          <QuickActionsMenu
+                            item={item}
+                            onUpdate={handleUpdate}
+                            onPhotosChange={handlePhotosChange}
+                            onDelete={handleDelete}
+                          />
+                        </div>
+                      </td>
+                    </tr>
+                  )
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit item' : 'Add item'} wide>
