@@ -98,7 +98,7 @@ export interface TaskDoc {
   title: string
   description: string
   taskType: TaskType
-  assigneeId: string
+  assigneeIds: string[]
   dueDate: Timestamp | null
   status: TaskStatus
   completedAt: Timestamp | null

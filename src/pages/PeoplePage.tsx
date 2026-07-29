@@ -25,9 +25,10 @@ export function PeoplePage() {
 
   const handleSubmit = async (values: PersonFormValues) => {
     if (editing) {
-      await updatePerson(editing.id, values)
+      const { authUid: _authUid, ...rest } = values
+      await updatePerson(editing.id, rest)
     } else {
-      await createPerson({ ...values, authUid: '' })
+      await createPerson({ ...values, authUid: values.authUid ?? '' })
     }
     setModalOpen(false)
   }

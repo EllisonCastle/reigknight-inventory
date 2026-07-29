@@ -1,6 +1,6 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '../ui/Button'
-import { FormRow, Input, Select, TextArea } from '../ui/Field'
+import { FormRow, Input, Label, Select, TextArea } from '../ui/Field'
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_TYPES, TASK_TYPE_LABELS } from '../../constants/tasks'
 import { dateInputToTimestamp, timestampToDateInput } from '../../lib/datetime'
 import type { Person, TaskDoc } from '../../types'
@@ -10,7 +10,7 @@ export interface TaskFormValues {
   title: string
   description: string
   taskType: TaskType
-  assigneeId: string
+  assigneeIds: string[]
   dueDate: ReturnType<typeof dateInputToTimestamp>
   status: TaskStatus
 }
@@ -32,13 +32,17 @@ export function TaskForm({ initial, people, onCancel, onSubmit }: TaskFormProps)
   const [title, setTitle] = useState(initial?.title ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [taskType, setTaskType] = useState<TaskType>(initial?.taskType ?? 'other')
-  const [assigneeId, setAssigneeId] = useState(initial?.assigneeId ?? '')
+  const [assigneeIds, setAssigneeIds] = useState<string[]>(initial?.assigneeIds ?? [])
   const [dueDate, setDueDate] = useState(initial?.dueDate ? timestampToDateInput(initial.dueDate) : defaultDueDate())
   const [status, setStatus] = useState<TaskStatus>(initial?.status ?? 'todo')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const activePeople = people.filter((p) => p.active)
+
+  const toggleAssignee = (personId: string) => {
+    setAssigneeIds((prev) => (prev.includes(personId) ? prev.filter((id) => id !== personId) : [...prev, personId]))
+  }
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -57,7 +61,7 @@ export function TaskForm({ initial, people, onCancel, onSubmit }: TaskFormProps)
         title: title.trim(),
         description: description.trim(),
         taskType,
-        assigneeId,
+        assigneeIds,
         dueDate: dateInputToTimestamp(dueDate),
         status,
       })
@@ -78,26 +82,38 @@ export function TaskForm({ initial, people, onCancel, onSubmit }: TaskFormProps)
         <TextArea rows={2} value={description} onChange={(e) => setDescription(e.target.value)} />
       </FormRow>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormRow label="Type">
-          <Select value={taskType} onChange={(e) => setTaskType(e.target.value as TaskType)}>
-            {TASK_TYPES.map((t) => (
-              <option key={t} value={t}>
-                {TASK_TYPE_LABELS[t]}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
-        <FormRow label="Assignee">
-          <Select value={assigneeId} onChange={(e) => setAssigneeId(e.target.value)}>
-            <option value="">Unassigned</option>
+      <FormRow label="Type">
+        <Select value={taskType} onChange={(e) => setTaskType(e.target.value as TaskType)}>
+          {TASK_TYPES.map((t) => (
+            <option key={t} value={t}>
+              {TASK_TYPE_LABELS[t]}
+            </option>
+          ))}
+        </Select>
+      </FormRow>
+
+      <div>
+        <Label>Assignees</Label>
+        {activePeople.length === 0 ? (
+          <p className="text-base text-gray-500">No active people yet — add some on the People page.</p>
+        ) : (
+          <div className="max-h-48 overflow-y-auto rounded-md border border-gray-300 bg-white">
             {activePeople.map((p) => (
-              <option key={p.id} value={p.id}>
+              <label
+                key={p.id}
+                className="flex min-h-[44px] cursor-pointer items-center gap-2 border-b border-gray-100 px-3 text-base text-charcoal last:border-b-0 hover:bg-surface"
+              >
+                <input
+                  type="checkbox"
+                  checked={assigneeIds.includes(p.id)}
+                  onChange={() => toggleAssignee(p.id)}
+                  className="h-5 w-5"
+                />
                 {p.fullName}
-              </option>
+              </label>
             ))}
-          </Select>
-        </FormRow>
+          </div>
+        )}
       </div>
 
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
