@@ -75,7 +75,8 @@ export function ThreadPanel({
             {thread.resolved && <Badge>Resolved</Badge>}
           </div>
           <p className="text-sm text-gray-500">
-            {thread.messageCount} message{thread.messageCount === 1 ? '' : 's'} · {formatRelativeTime(thread.lastMessageAt)}
+            {thread.messageCount ?? 0} message{(thread.messageCount ?? 0) === 1 ? '' : 's'} ·{' '}
+            {formatRelativeTime(thread.lastMessageAt)}
           </p>
         </div>
         {isAdmin && (

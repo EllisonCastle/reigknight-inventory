@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { collection, deleteDoc, doc, increment, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
+import { collection, doc, increment, onSnapshot, query, serverTimestamp, updateDoc, where, writeBatch } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from './useAuth'
 import { useCurrentPerson } from './useCurrentPerson'
@@ -61,7 +61,13 @@ export function useTaskMessages(threadId: string | undefined) {
   const editMessage = (messageId: string, body: string) =>
     updateDoc(doc(db, 'taskMessages', messageId), { body: body.trim(), editedAt: serverTimestamp() })
 
-  const deleteMessage = (messageId: string) => deleteDoc(doc(db, 'taskMessages', messageId))
+  const deleteMessage = async (messageId: string) => {
+    if (!threadId) throw new Error('Missing thread.')
+    const batch = writeBatch(db)
+    batch.delete(doc(db, 'taskMessages', messageId))
+    batch.update(doc(db, 'taskThreads', threadId), { messageCount: increment(-1) })
+    await batch.commit()
+  }
 
   return { messages, loading, error, postMessage, editMessage, deleteMessage }
 }

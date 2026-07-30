@@ -16,6 +16,7 @@ export function receiptMapByTask(receipts: TaskReadReceiptDoc[]): Map<string, Ti
 /** Resolved threads never count as unread, even if they had activity after the last read. */
 function isThreadUnread(thread: TaskThreadDoc, lastReadAt: Timestamp | undefined): boolean {
   if (thread.resolved) return false
+  if (!thread.lastMessageAt) return false
   if (!lastReadAt) return true
   return thread.lastMessageAt.toMillis() > lastReadAt.toMillis()
 }
@@ -63,6 +64,6 @@ export function recentUnreadThreads(
     .filter(
       (t) => (visibleTaskIds === 'all' || visibleTaskIds.has(t.taskId)) && isThreadUnread(t, receiptsByTask.get(t.taskId)),
     )
-    .sort((a, b) => b.lastMessageAt.toMillis() - a.lastMessageAt.toMillis())
+    .sort((a, b) => (b.lastMessageAt?.toMillis() ?? 0) - (a.lastMessageAt?.toMillis() ?? 0))
     .slice(0, limit)
 }
