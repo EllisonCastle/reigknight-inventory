@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useInventoryItems } from '../hooks/useInventoryItems'
+import { usePermissions } from '../hooks/usePermissions'
 import { InventoryForm, type InventoryFormFields } from '../components/inventory/InventoryForm'
 import {
   InventoryFilters,
@@ -39,6 +40,7 @@ function AttentionBadge({ tone, label }: { tone: 'amber' | 'red' | null; label: 
 
 export function InventoryPage() {
   const { items, loading, error, createItem, updateItem, deleteItem } = useInventoryItems()
+  const { isAdminOrStaff } = usePermissions()
   const [filters, setFilters] = useState<InventoryFilterState>(emptyInventoryFilters)
   const [sort, setSort] = useState<InventorySortKey>('name')
   const [modalOpen, setModalOpen] = useState(false)
@@ -93,9 +95,11 @@ export function InventoryPage() {
           <Button variant="secondary" onClick={() => setImportOpen(true)} className="min-h-[44px]">
             Import CSV
           </Button>
-          <Button onClick={openCreate} className="min-h-[44px]">
-            + Add item
-          </Button>
+          <span title={isAdminOrStaff ? undefined : 'Admin or staff only'}>
+            <Button onClick={openCreate} disabled={!isAdminOrStaff} className="min-h-[44px]">
+              + Add item
+            </Button>
+          </span>
         </div>
       </div>
 
@@ -118,29 +122,53 @@ export function InventoryPage() {
                   key={item.id}
                   className={`flex gap-3 rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${stripeClass(attention.tone)}`}
                 >
-                  <button type="button" onClick={() => openEdit(item)} className="shrink-0">
-                    {primary ? (
-                      <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
-                    ) : (
-                      <div className="h-14 w-14 rounded bg-surface" />
-                    )}
-                  </button>
-                  <button type="button" onClick={() => openEdit(item)} className="min-w-0 flex-1 text-left">
-                    <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
-                    <p className="truncate text-sm text-gray-500">
-                      {item.category || '—'}
-                      {item.location ? ` · ${item.location}` : ''}
-                    </p>
-                    <div className="mt-1">
-                      <AttentionBadge tone={attention.tone} label={attention.label} />
-                    </div>
-                  </button>
-                  <QuickActionsMenu
-                    item={item}
-                    onUpdate={handleUpdate}
-                    onPhotosChange={handlePhotosChange}
-                    onDelete={handleDelete}
-                  />
+                  {isAdminOrStaff ? (
+                    <>
+                      <button type="button" onClick={() => openEdit(item)} className="shrink-0">
+                        {primary ? (
+                          <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
+                        ) : (
+                          <div className="h-14 w-14 rounded bg-surface" />
+                        )}
+                      </button>
+                      <button type="button" onClick={() => openEdit(item)} className="min-w-0 flex-1 text-left">
+                        <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
+                        <p className="truncate text-sm text-gray-500">
+                          {item.category || '—'}
+                          {item.location ? ` · ${item.location}` : ''}
+                        </p>
+                        <div className="mt-1">
+                          <AttentionBadge tone={attention.tone} label={attention.label} />
+                        </div>
+                      </button>
+                      <QuickActionsMenu
+                        item={item}
+                        onUpdate={handleUpdate}
+                        onPhotosChange={handlePhotosChange}
+                        onDelete={handleDelete}
+                      />
+                    </>
+                  ) : (
+                    <>
+                      <div className="shrink-0">
+                        {primary ? (
+                          <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
+                        ) : (
+                          <div className="h-14 w-14 rounded bg-surface" />
+                        )}
+                      </div>
+                      <div className="min-w-0 flex-1">
+                        <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
+                        <p className="truncate text-sm text-gray-500">
+                          {item.category || '—'}
+                          {item.location ? ` · ${item.location}` : ''}
+                        </p>
+                        <div className="mt-1">
+                          <AttentionBadge tone={attention.tone} label={attention.label} />
+                        </div>
+                      </div>
+                    </>
+                  )}
                 </div>
               )
             })}
@@ -187,26 +215,32 @@ export function InventoryPage() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        <div className="flex items-center justify-end gap-1">
-                          <button
-                            onClick={() => openEdit(item)}
-                            className="min-h-[44px] px-2 text-base font-medium text-regal hover:underline"
-                          >
-                            Edit
-                          </button>
-                          <button
-                            onClick={() => handleDelete(item)}
-                            className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
-                          >
-                            Delete
-                          </button>
-                          <QuickActionsMenu
-                            item={item}
-                            onUpdate={handleUpdate}
-                            onPhotosChange={handlePhotosChange}
-                            onDelete={handleDelete}
-                          />
-                        </div>
+                        {isAdminOrStaff ? (
+                          <div className="flex items-center justify-end gap-1">
+                            <button
+                              onClick={() => openEdit(item)}
+                              className="min-h-[44px] px-2 text-base font-medium text-regal hover:underline"
+                            >
+                              Edit
+                            </button>
+                            <button
+                              onClick={() => handleDelete(item)}
+                              className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
+                            >
+                              Delete
+                            </button>
+                            <QuickActionsMenu
+                              item={item}
+                              onUpdate={handleUpdate}
+                              onPhotosChange={handlePhotosChange}
+                              onDelete={handleDelete}
+                            />
+                          </div>
+                        ) : (
+                          <span className="text-sm text-gray-400" title="Admin or staff only">
+                            View only
+                          </span>
+                        )}
                       </td>
                     </tr>
                   )

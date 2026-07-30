@@ -1,5 +1,6 @@
 import { useMemo, useState } from 'react'
 import { useTasksForEvent } from '../../hooks/useTasks'
+import { usePermissions } from '../../hooks/usePermissions'
 import { TaskForm, type TaskFormValues } from './TaskForm'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -24,6 +25,7 @@ const statusTone: Record<string, 'neutral' | 'amber' | 'red' | 'green'> = {
 
 export function TaskManager({ eventId, people }: TaskManagerProps) {
   const { tasks, loading, error, createTask, updateTask, setTaskStatus, deleteTask } = useTasksForEvent(eventId)
+  const { isAdmin, canEditTaskStatus } = usePermissions()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<TaskDoc | undefined>(undefined)
   const [typeFilter, setTypeFilter] = useState('')
@@ -71,7 +73,9 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
     <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
         <h2 className="text-lg font-semibold text-charcoal">Tasks</h2>
-        <Button onClick={openCreate}>+ Add task</Button>
+        <span title={isAdmin ? undefined : 'Admin only'}>
+          <Button onClick={openCreate} disabled={!isAdmin}>+ Add task</Button>
+        </span>
       </div>
 
       <ErrorNotice message={error} />
@@ -119,7 +123,9 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
                   type="checkbox"
                   checked={task.status === 'done'}
                   onChange={() => toggleDone(task)}
-                  className="mt-1 h-5 w-5 shrink-0"
+                  disabled={!canEditTaskStatus(task.assigneeIds)}
+                  title={canEditTaskStatus(task.assigneeIds) ? undefined : 'Only assigned team members can update this'}
+                  className="mt-1 h-5 w-5 shrink-0 disabled:opacity-40"
                   aria-label={`Mark "${task.title}" ${task.status === 'done' ? 'not done' : 'done'}`}
                 />
                 <div>
@@ -140,13 +146,17 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
                 {task.status !== 'done' && <Badge tone={statusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>}
                 <button
                   onClick={() => openEdit(task)}
-                  className="min-h-[44px] px-2 text-base font-medium text-regal hover:underline"
+                  disabled={!isAdmin}
+                  title={isAdmin ? undefined : 'Admin only'}
+                  className="min-h-[44px] px-2 text-base font-medium text-regal hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
                 >
                   Edit
                 </button>
                 <button
                   onClick={() => handleDelete(task)}
-                  className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
+                  disabled={!isAdmin}
+                  title={isAdmin ? undefined : 'Admin only'}
+                  className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
                 >
                   Delete
                 </button>

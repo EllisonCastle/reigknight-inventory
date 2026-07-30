@@ -9,14 +9,74 @@ service cloud.firestore {
         && request.auth.token.firebase.sign_in_provider == 'password';
     }
 
+    // Role lookup: users/{authUid} mirrors { role, personId } from the matching
+    // people/{personId} doc, kept in sync by the app (usePeople.ts) whenever a
+    // person's authUid or role changes. isTeam() must short-circuit before this
+    // runs so we never call get() with a null request.auth.uid.
+    function userRole() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role;
+    }
+
+    function myPersonId() {
+      return get(/databases/$(database)/documents/users/$(request.auth.uid)).data.personId;
+    }
+
+    function isAdmin() {
+      return isTeam() && userRole() == 'admin';
+    }
+
+    function isAdminOrStaff() {
+      return isTeam() && (userRole() == 'admin' || userRole() == 'staff');
+    }
+
+    // The users/ collection stays at the same isTeam() trust level as people/
+    // below (not admin-gated) — deliberately, to avoid a circular dependency:
+    // an admin-only write rule here would need userRole() to already resolve,
+    // which needs this very doc to exist. Any team member can already edit
+    // anyone's people.role today (see people/ below, unchanged this phase), so
+    // this doesn't introduce a new class of risk, just a second path to the
+    // same already-accepted one. Tightening people/ and users/ together is a
+    // natural follow-up phase once there's a safe bootstrap mechanism (e.g.
+    // seeding the founding admin's mirror doc via the Firebase Console, which
+    // bypasses rules entirely).
+    match /users/{uid} {
+      allow read, write: if isTeam();
+    }
+
+    // Unchanged this phase, per explicit scope — any team member can still
+    // create/edit/delete these. Revisit in a later phase if needed.
     match /venues/{id}         { allow read, write: if isTeam(); }
-    match /inventoryItems/{id} { allow read, write: if isTeam(); }
     match /people/{id}         { allow read, write: if isTeam(); }
-    match /events/{id}         { allow read, write: if isTeam(); }
     match /reservations/{id}   { allow read, write: if isTeam(); }
-    match /tasks/{id}          { allow read, write: if isTeam(); }
     match /agendaItems/{id}    { allow read, write: if isTeam(); }
     match /vendors/{id}        { allow read, write: if isTeam(); }
+
+    // Inventory: admin or staff manage the catalog; any team member reads.
+    match /inventoryItems/{id} {
+      allow read: if isTeam();
+      allow create, update, delete: if isAdminOrStaff();
+    }
+
+    // Events: admin-only for create/update/delete (status changes are just an
+    // update); any team member reads.
+    match /events/{id} {
+      allow read: if isTeam();
+      allow create, update, delete: if isAdmin();
+    }
+
+    // Tasks: admin-only for create/delete. Any team member can still read the
+    // full list (needed for event coordination), but a non-admin write is only
+    // allowed when it (a) touches nothing but status/completedAt and (b) the
+    // actor is one of the task's own assignees — matching the Phase 2
+    // "assigned person marks their own task done" flow exactly, not any task.
+    match /tasks/{id} {
+      allow read: if isTeam();
+      allow create, delete: if isAdmin();
+      allow update: if isAdmin()
+        || (isTeam()
+            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'completedAt'])
+            && myPersonId() in resource.data.assigneeIds);
+    }
 
     match /publicViews/{token} {
       allow get:   if true;      // anyone with the unguessable token can read this one doc

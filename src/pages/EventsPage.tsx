@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useEvents } from '../hooks/useEvents'
 import { useVenues } from '../hooks/useVenues'
+import { usePermissions } from '../hooks/usePermissions'
 import { EventForm, type EventFormFields } from '../components/events/EventForm'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
@@ -13,6 +14,7 @@ import type { EventDoc } from '../types'
 export function EventsPage() {
   const { events, loading, error, createEvent, updateEvent, deleteEvent } = useEvents()
   const { venues } = useVenues()
+  const { isAdmin } = usePermissions()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<EventDoc | undefined>(undefined)
 
@@ -49,9 +51,11 @@ export function EventsPage() {
     <div className="mx-auto max-w-5xl">
       <div className="mb-6 flex items-center justify-between">
         <h1 className="text-xl font-semibold text-charcoal">Events</h1>
-        <Button onClick={openCreate} disabled={venues.length === 0} className="min-h-[44px]">
-          + Add event
-        </Button>
+        <span title={isAdmin ? undefined : 'Admin only'}>
+          <Button onClick={openCreate} disabled={venues.length === 0 || !isAdmin} className="min-h-[44px]">
+            + Add event
+          </Button>
+        </span>
       </div>
 
       {venues.length === 0 && !loading && (
@@ -94,13 +98,17 @@ export function EventsPage() {
                   <td className="px-4 py-3 text-right">
                     <button
                       onClick={() => openEdit(event)}
-                      className="mr-1 min-h-[44px] px-2 text-base font-medium text-regal hover:underline"
+                      disabled={!isAdmin}
+                      title={isAdmin ? undefined : 'Admin only'}
+                      className="mr-1 min-h-[44px] px-2 text-base font-medium text-regal hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
                     >
                       Edit
                     </button>
                     <button
                       onClick={() => handleDelete(event)}
-                      className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
+                      disabled={!isAdmin}
+                      title={isAdmin ? undefined : 'Admin only'}
+                      className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
                     >
                       Delete
                     </button>
