@@ -3,6 +3,7 @@ import { Link } from 'react-router-dom'
 import { useCurrentPerson } from '../hooks/useCurrentPerson'
 import { useEvents } from '../hooks/useEvents'
 import { useTasksForAssignee } from '../hooks/useTasks'
+import { useUnreadTaskMessages } from '../hooks/useUnreadTaskMessages'
 import { Badge } from '../components/ui/Badge'
 import { Select } from '../components/ui/Field'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
@@ -20,6 +21,7 @@ export function MyTasksPage() {
   const { person, loading: personLoading, error: personError } = useCurrentPerson()
   const { events } = useEvents()
   const { tasks, loading: tasksLoading, error: tasksError, setTaskStatus } = useTasksForAssignee(person?.id)
+  const { unreadByTask } = useUnreadTaskMessages()
 
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
@@ -87,9 +89,19 @@ export function MyTasksPage() {
                         aria-label={`Mark "${task.title}" ${task.status === 'done' ? 'not done' : 'done'}`}
                       />
                       <div>
-                        <p className={`text-base font-medium ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-charcoal'}`}>
-                          {task.title}
-                        </p>
+                        <div className="flex items-center gap-1.5">
+                          <Link
+                            to={`/tasks/${task.id}`}
+                            className={`text-base font-medium hover:underline ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-charcoal'}`}
+                          >
+                            {task.title}
+                          </Link>
+                          {(unreadByTask.get(task.id) ?? 0) > 0 && (
+                            <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-sm font-medium text-white">
+                              {unreadByTask.get(task.id)}
+                            </span>
+                          )}
+                        </div>
                         <p className="text-sm text-gray-500">
                           {event ? (
                             <Link to={`/events/${event.id}`} className="hover:underline">

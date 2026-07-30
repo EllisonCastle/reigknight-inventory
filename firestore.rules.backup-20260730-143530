@@ -78,36 +78,6 @@ service cloud.firestore {
             && myPersonId() in resource.data.assigneeIds);
     }
 
-    // Phase 3.8 — task discussion threads. Admin/staff only; contractors,
-    // viewers, and anonymous sessions get no access to any of these three.
-    match /taskThreads/{id} {
-      allow read: if isAdminOrStaff();
-      allow create: if isAdminOrStaff();
-      // Admin can change anything (title fixes, resolved/resolvedAt/resolvedBy).
-      // Any admin-or-staff poster can bump lastMessageAt/messageCount as a
-      // side effect of posting a message — nothing else, from anyone else.
-      allow update: if isAdmin()
-        || (isAdminOrStaff()
-            && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['lastMessageAt', 'messageCount']));
-    }
-
-    match /taskMessages/{id} {
-      allow read: if isAdminOrStaff();
-      // authorUid must match the poster — prevents posting "as" someone else.
-      allow create: if isAdminOrStaff() && request.resource.data.authorUid == request.auth.uid;
-      // Only the author, only within 5 minutes of posting, only body/editedAt.
-      allow update: if isAdminOrStaff()
-        && resource.data.authorUid == request.auth.uid
-        && request.time < resource.data.createdAt + duration.value(5, 'm')
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['body', 'editedAt']);
-      allow delete: if isAdmin() || (isAdminOrStaff() && resource.data.authorUid == request.auth.uid);
-    }
-
-    match /taskReadReceipts/{id} {
-      allow read: if isAdminOrStaff() && resource.data.userUid == request.auth.uid;
-      allow write: if isAdminOrStaff() && request.resource.data.userUid == request.auth.uid;
-    }
-
     match /publicViews/{token} {
       allow get:   if true;      // anyone with the unguessable token can read this one doc
       allow list:  if false;     // but cannot enumerate the collection

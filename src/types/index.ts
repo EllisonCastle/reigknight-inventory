@@ -136,6 +136,45 @@ export interface AgendaItemDoc {
   createdBy: string
 }
 
+export type MessageAuthorRole = 'admin' | 'staff'
+
+/** taskThreads/{threadId} — a discussion thread scoped to one task. */
+export interface TaskThreadDoc {
+  id: string
+  taskId: string
+  eventId: string
+  title: string
+  createdBy: string
+  createdByName: string
+  createdAt: Timestamp | null
+  lastMessageAt: Timestamp
+  messageCount: number
+  resolved: boolean
+  resolvedAt: Timestamp | null
+  resolvedBy: string | null
+}
+
+/** taskMessages/{messageId} — one message within a taskThread. */
+export interface TaskMessageDoc {
+  id: string
+  threadId: string
+  taskId: string
+  authorUid: string
+  authorName: string
+  authorRole: MessageAuthorRole
+  body: string
+  createdAt: Timestamp
+  editedAt: Timestamp | null
+}
+
+/** taskReadReceipts/{taskId_authorUid} — per-user, per-task "last saw the Discussion section" marker. */
+export interface TaskReadReceiptDoc {
+  id: string
+  taskId: string
+  userUid: string
+  lastReadAt: Timestamp
+}
+
 /** publicViews/{shareToken} — a self-contained, read-only snapshot of one event. */
 export interface PublicViewSnapshot {
   eventId: string

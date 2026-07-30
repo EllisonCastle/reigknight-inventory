@@ -14,5 +14,5 @@ export function usePermissions() {
   const canEditTaskStatus = (assigneeIds: string[]) =>
     isAdmin || (Boolean(person?.id) && assigneeIds.includes(person!.id))
 
-  return { loading, role, isAdmin, isAdminOrStaff, canEditTaskStatus }
+  return { loading, role, isAdmin, isAdminOrStaff, canEditTaskStatus, personId: person?.id }
 }
