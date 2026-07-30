@@ -3,6 +3,7 @@ import { NavLink } from 'react-router-dom'
 import { useAuth } from '../../hooks/useAuth'
 import { useCurrentPerson } from '../../hooks/useCurrentPerson'
 import { BottomSheet } from '../ui/BottomSheet'
+import { NotificationBell } from './NotificationBell'
 
 const navItems = [
   { to: '/', label: 'Dashboard', end: true },
@@ -56,6 +57,7 @@ export function AppShell({ children }: { children: ReactNode }) {
           </button>
           <span className="text-base font-semibold text-charcoal sm:hidden">Reigknight</span>
           <div className="ml-auto flex items-center gap-3">
+            <NotificationBell />
             <span className="hidden text-sm text-gray-500 sm:inline">{user?.email}</span>
             <button
               onClick={() => logout()}

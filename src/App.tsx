@@ -11,6 +11,7 @@ import { InventoryPage } from './pages/InventoryPage'
 import { InventoryDetailPage } from './pages/InventoryDetailPage'
 import { EventsPage } from './pages/EventsPage'
 import { EventDetailPage } from './pages/EventDetailPage'
+import { TaskDetailPage } from './pages/TaskDetailPage'
 import { PeoplePage } from './pages/PeoplePage'
 import { MyTasksPage } from './pages/MyTasksPage'
 import { PublicEventPage } from './pages/PublicEventPage'
@@ -37,6 +38,7 @@ export default function App() {
           <Route path="/inventory/:itemId" element={<Protected><InventoryDetailPage /></Protected>} />
           <Route path="/events" element={<Protected><EventsPage /></Protected>} />
           <Route path="/events/:eventId" element={<Protected><EventDetailPage /></Protected>} />
+          <Route path="/tasks/:taskId" element={<Protected><TaskDetailPage /></Protected>} />
           <Route
             path="/people"
             element={

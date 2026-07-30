@@ -1,6 +1,8 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useTasksForEvent } from '../../hooks/useTasks'
 import { usePermissions } from '../../hooks/usePermissions'
+import { useUnreadTaskMessages } from '../../hooks/useUnreadTaskMessages'
 import { TaskForm, type TaskFormValues } from './TaskForm'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
@@ -26,6 +28,7 @@ const statusTone: Record<string, 'neutral' | 'amber' | 'red' | 'green'> = {
 export function TaskManager({ eventId, people }: TaskManagerProps) {
   const { tasks, loading, error, createTask, updateTask, setTaskStatus, deleteTask } = useTasksForEvent(eventId)
   const { isAdmin, canEditTaskStatus } = usePermissions()
+  const { unreadByTask } = useUnreadTaskMessages()
   const [modalOpen, setModalOpen] = useState(false)
   const [editing, setEditing] = useState<TaskDoc | undefined>(undefined)
   const [typeFilter, setTypeFilter] = useState('')
@@ -33,6 +36,11 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
   const [assigneeFilter, setAssigneeFilter] = useState('')
 
   const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
+
+  const eventUnreadTotal = useMemo(
+    () => tasks.reduce((sum, t) => sum + (unreadByTask.get(t.id) ?? 0), 0),
+    [tasks, unreadByTask],
+  )
 
   const filtered = tasks.filter((t) => {
     if (typeFilter && t.taskType !== typeFilter) return false
@@ -72,7 +80,14 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
   return (
     <div className="mt-6 rounded-lg border border-gray-200 bg-white p-4">
       <div className="mb-3 flex items-center justify-between">
-        <h2 className="text-lg font-semibold text-charcoal">Tasks</h2>
+        <div className="flex items-center gap-2">
+          <h2 className="text-lg font-semibold text-charcoal">Tasks</h2>
+          {eventUnreadTotal > 0 && (
+            <span className="rounded-full bg-red-50 px-2 py-0.5 text-sm font-medium text-red-700">
+              {eventUnreadTotal} unread task message{eventUnreadTotal === 1 ? '' : 's'}
+            </span>
+          )}
+        </div>
         <span title={isAdmin ? undefined : 'Admin only'}>
           <Button onClick={openCreate} disabled={!isAdmin}>+ Add task</Button>
         </span>
@@ -129,9 +144,19 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
                   aria-label={`Mark "${task.title}" ${task.status === 'done' ? 'not done' : 'done'}`}
                 />
                 <div>
-                  <p className={`text-base font-medium ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-charcoal'}`}>
-                    {task.title}
-                  </p>
+                  <div className="flex items-center gap-1.5">
+                    <Link
+                      to={`/tasks/${task.id}`}
+                      className={`text-base font-medium hover:underline ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-charcoal'}`}
+                    >
+                      {task.title}
+                    </Link>
+                    {(unreadByTask.get(task.id) ?? 0) > 0 && (
+                      <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-sm font-medium text-white">
+                        {unreadByTask.get(task.id)}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-sm text-gray-500">
                     {TASK_TYPE_LABELS[task.taskType]}
                     {task.assigneeIds.length > 0
