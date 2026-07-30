@@ -1,4 +1,5 @@
 import { useMemo, useState } from 'react'
+import { Link } from 'react-router-dom'
 import { useInventoryItems } from '../hooks/useInventoryItems'
 import { usePermissions } from '../hooks/usePermissions'
 import { InventoryForm, type InventoryFormFields } from '../components/inventory/InventoryForm'
@@ -42,7 +43,7 @@ export function InventoryPage() {
   const { items, loading, error, createItem, updateItem, deleteItem } = useInventoryItems()
   const { isAdminOrStaff } = usePermissions()
   const [filters, setFilters] = useState<InventoryFilterState>(emptyInventoryFilters)
-  const [sort, setSort] = useState<InventorySortKey>('name')
+  const [sort, setSort] = useState<InventorySortKey>('updatedAt')
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<InventoryItem | undefined>(undefined)
@@ -122,52 +123,30 @@ export function InventoryPage() {
                   key={item.id}
                   className={`flex gap-3 rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${stripeClass(attention.tone)}`}
                 >
-                  {isAdminOrStaff ? (
-                    <>
-                      <button type="button" onClick={() => openEdit(item)} className="shrink-0">
-                        {primary ? (
-                          <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
-                        ) : (
-                          <div className="h-14 w-14 rounded bg-surface" />
-                        )}
-                      </button>
-                      <button type="button" onClick={() => openEdit(item)} className="min-w-0 flex-1 text-left">
-                        <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
-                        <p className="truncate text-sm text-gray-500">
-                          {item.category || '—'}
-                          {item.location ? ` · ${item.location}` : ''}
-                        </p>
-                        <div className="mt-1">
-                          <AttentionBadge tone={attention.tone} label={attention.label} />
-                        </div>
-                      </button>
-                      <QuickActionsMenu
-                        item={item}
-                        onUpdate={handleUpdate}
-                        onPhotosChange={handlePhotosChange}
-                        onDelete={handleDelete}
-                      />
-                    </>
-                  ) : (
-                    <>
-                      <div className="shrink-0">
-                        {primary ? (
-                          <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
-                        ) : (
-                          <div className="h-14 w-14 rounded bg-surface" />
-                        )}
-                      </div>
-                      <div className="min-w-0 flex-1">
-                        <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
-                        <p className="truncate text-sm text-gray-500">
-                          {item.category || '—'}
-                          {item.location ? ` · ${item.location}` : ''}
-                        </p>
-                        <div className="mt-1">
-                          <AttentionBadge tone={attention.tone} label={attention.label} />
-                        </div>
-                      </div>
-                    </>
+                  <Link to={`/inventory/${item.id}`} className="shrink-0">
+                    {primary ? (
+                      <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
+                    ) : (
+                      <div className="h-14 w-14 rounded bg-surface" />
+                    )}
+                  </Link>
+                  <Link to={`/inventory/${item.id}`} className="min-w-0 flex-1 text-left">
+                    <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
+                    <p className="truncate text-sm text-gray-500">
+                      {item.category || '—'}
+                      {item.location ? ` · ${item.location}` : ''}
+                    </p>
+                    <div className="mt-1">
+                      <AttentionBadge tone={attention.tone} label={attention.label} />
+                    </div>
+                  </Link>
+                  {isAdminOrStaff && (
+                    <QuickActionsMenu
+                      item={item}
+                      onUpdate={handleUpdate}
+                      onPhotosChange={handlePhotosChange}
+                      onDelete={handleDelete}
+                    />
                   )}
                 </div>
               )
@@ -194,13 +173,19 @@ export function InventoryPage() {
                   return (
                     <tr key={item.id} className={`border-l-4 ${stripeClass(attention.tone)}`}>
                       <td className="px-4 py-2.5">
-                        {primary ? (
-                          <img src={primary.url} alt="" className="h-10 w-10 rounded object-cover" />
-                        ) : (
-                          <div className="h-10 w-10 rounded bg-surface" />
-                        )}
+                        <Link to={`/inventory/${item.id}`}>
+                          {primary ? (
+                            <img src={primary.url} alt="" className="h-10 w-10 rounded object-cover" />
+                          ) : (
+                            <div className="h-10 w-10 rounded bg-surface" />
+                          )}
+                        </Link>
                       </td>
-                      <td className="px-4 py-2.5 font-medium text-charcoal">{item.name}</td>
+                      <td className="px-4 py-2.5 font-medium text-charcoal">
+                        <Link to={`/inventory/${item.id}`} className="hover:underline">
+                          {item.name}
+                        </Link>
+                      </td>
                       <td className="px-4 py-2.5 text-gray-600">{item.category || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600">
                         {item.location || '—'}
@@ -215,7 +200,7 @@ export function InventoryPage() {
                         )}
                       </td>
                       <td className="px-4 py-2.5 text-right">
-                        {isAdminOrStaff ? (
+                        {isAdminOrStaff && (
                           <div className="flex items-center justify-end gap-1">
                             <button
                               onClick={() => openEdit(item)}
@@ -236,10 +221,6 @@ export function InventoryPage() {
                               onDelete={handleDelete}
                             />
                           </div>
-                        ) : (
-                          <span className="text-sm text-gray-400" title="Admin or staff only">
-                            View only
-                          </span>
                         )}
                       </td>
                     </tr>
