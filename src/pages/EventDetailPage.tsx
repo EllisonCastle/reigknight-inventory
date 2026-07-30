@@ -5,6 +5,7 @@ import { useVenues } from '../hooks/useVenues'
 import { useInventoryItems } from '../hooks/useInventoryItems'
 import { usePeople } from '../hooks/usePeople'
 import { useVendors } from '../hooks/useVendors'
+import { usePermissions } from '../hooks/usePermissions'
 import { EventForm, type EventFormFields } from '../components/events/EventForm'
 import { ReservationManager } from '../components/events/ReservationManager'
 import { TaskManager } from '../components/tasks/TaskManager'
@@ -21,6 +22,7 @@ export function EventDetailPage() {
   const { items } = useInventoryItems()
   const { people } = usePeople()
   const { vendors } = useVendors()
+  const { isAdmin } = usePermissions()
   const [editOpen, setEditOpen] = useState(false)
   const [copied, setCopied] = useState(false)
 
@@ -69,9 +71,11 @@ export function EventDetailPage() {
             <StatusBadge status={event.status} />
           </div>
         </div>
-        <Button variant="secondary" onClick={() => setEditOpen(true)}>
-          Edit event
-        </Button>
+        <span title={isAdmin ? undefined : 'Admin only'}>
+          <Button variant="secondary" onClick={() => setEditOpen(true)} disabled={!isAdmin}>
+            Edit event
+          </Button>
+        </span>
       </div>
 
       {(event.clientName || event.clientContact || event.notes) && (
