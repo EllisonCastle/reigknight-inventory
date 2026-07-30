@@ -8,6 +8,7 @@ import { LoginPage } from './pages/LoginPage'
 import { DashboardPage } from './pages/DashboardPage'
 import { VenuesPage } from './pages/VenuesPage'
 import { InventoryPage } from './pages/InventoryPage'
+import { InventoryDetailPage } from './pages/InventoryDetailPage'
 import { EventsPage } from './pages/EventsPage'
 import { EventDetailPage } from './pages/EventDetailPage'
 import { PeoplePage } from './pages/PeoplePage'
@@ -33,6 +34,7 @@ export default function App() {
           <Route path="/" element={<Protected><DashboardPage /></Protected>} />
           <Route path="/venues" element={<Protected><VenuesPage /></Protected>} />
           <Route path="/inventory" element={<Protected><InventoryPage /></Protected>} />
+          <Route path="/inventory/:itemId" element={<Protected><InventoryDetailPage /></Protected>} />
           <Route path="/events" element={<Protected><EventsPage /></Protected>} />
           <Route path="/events/:eventId" element={<Protected><EventDetailPage /></Protected>} />
           <Route

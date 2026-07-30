@@ -30,9 +30,11 @@ export const emptyInventoryFilters: InventoryFilterState = {
   attentionOnly: false,
 }
 
-export type InventorySortKey = 'name' | 'category' | 'needsWork' | 'condition' | 'location'
+export type InventorySortKey = 'name' | 'category' | 'needsWork' | 'condition' | 'location' | 'updatedAt' | 'createdAt'
 
 export const SORT_OPTIONS: { value: InventorySortKey; label: string }[] = [
+  { value: 'updatedAt', label: 'Last modified' },
+  { value: 'createdAt', label: 'Recently created' },
   { value: 'name', label: 'Name' },
   { value: 'category', label: 'Category' },
   { value: 'needsWork', label: 'Needs work most' },
@@ -243,6 +245,10 @@ export function applyInventorySort(items: InventoryItem[], sort: InventorySortKe
         const bWork = b.statusBreakdown.needsRepair + b.statusBreakdown.needsReplacement
         return bWork - aWork
       })
+    case 'updatedAt':
+      return sorted.sort((a, b) => (b.updatedAt?.toMillis() ?? 0) - (a.updatedAt?.toMillis() ?? 0))
+    case 'createdAt':
+      return sorted.sort((a, b) => (b.createdAt?.toMillis() ?? 0) - (a.createdAt?.toMillis() ?? 0))
     default:
       return sorted
   }
