@@ -17,8 +17,22 @@ import { QuickActionsMenu } from '../components/inventory/QuickActionsMenu'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
-import { attentionInfo, availableForRental } from '../lib/inventoryStatus'
-import type { InventoryItem, InventoryPhoto } from '../types'
+import { attentionInfo, availableForRental, getItemTotalQuantity } from '../lib/inventoryStatus'
+import { useLocations } from '../hooks/useLocations'
+import type { InventoryItem, InventoryPhoto, LocationDoc } from '../types'
+
+/** Compact location summary for list rows: the single entry's resolved name, or a count when spread across several. */
+function locationSummary(item: InventoryItem, locationsById: Map<string, LocationDoc>): string {
+  if (item.storageEntries?.length) {
+    if (item.storageEntries.length === 1) {
+      const e = item.storageEntries[0]
+      const loc = locationsById.get(e.locationId)
+      return loc ? `${loc.name}${e.bin ? ` · ${e.bin}` : ''}` : 'Unknown location'
+    }
+    return `${item.storageEntries.length} locations`
+  }
+  return item.location || ''
+}
 
 function stripeClass(tone: 'amber' | 'red' | null): string {
   if (tone === 'red') return 'border-l-red-500'
@@ -42,6 +56,8 @@ function AttentionBadge({ tone, label }: { tone: 'amber' | 'red' | null; label: 
 export function InventoryPage() {
   const { items, loading, error, createItem, updateItem, deleteItem } = useInventoryItems()
   const { isAdminOrStaff } = usePermissions()
+  const { locations } = useLocations()
+  const locationsById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
   const [filters, setFilters] = useState<InventoryFilterState>(emptyInventoryFilters)
   const [sort, setSort] = useState<InventorySortKey>('updatedAt')
   const [modalOpen, setModalOpen] = useState(false)
@@ -49,8 +65,8 @@ export function InventoryPage() {
   const [editing, setEditing] = useState<InventoryItem | undefined>(undefined)
 
   const filtered = useMemo(
-    () => applyInventorySort(applyInventoryFilters(items, filters), sort),
-    [items, filters, sort],
+    () => applyInventorySort(applyInventoryFilters(items, filters), sort, locationsById),
+    [items, filters, sort, locationsById],
   )
 
   const openCreate = () => {
@@ -134,11 +150,11 @@ export function InventoryPage() {
                     <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
                     <p className="truncate text-sm text-gray-500">
                       {item.category || '—'}
-                      {item.location ? ` · ${item.location}` : ''}
+                      {locationSummary(item, locationsById) ? ` · ${locationSummary(item, locationsById)}` : ''}
                     </p>
                     <p className="text-sm text-gray-500">
                       {availableForRental(item)} available
-                      {availableForRental(item) !== item.totalQuantity ? ` of ${item.totalQuantity}` : ''}
+                      {availableForRental(item) !== getItemTotalQuantity(item) ? ` of ${getItemTotalQuantity(item)}` : ''}
                     </p>
                     <div className="mt-1">
                       <AttentionBadge tone={attention.tone} label={attention.label} />
@@ -192,11 +208,8 @@ export function InventoryPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{item.category || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600">
-                        {item.location || '—'}
-                        {item.bin ? ` · ${item.bin}` : ''}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600">{item.totalQuantity}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{locationSummary(item, locationsById) || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{getItemTotalQuantity(item)}</td>
                       <td className="px-4 py-2.5 text-gray-600">{availableForRental(item)}</td>
                       <td className="px-4 py-2.5">
                         {attention.label ? (

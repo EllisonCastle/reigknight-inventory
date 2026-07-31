@@ -1,5 +1,7 @@
 import Papa from 'papaparse'
-import type { InventoryItem } from '../types'
+import { getItemTotalQuantity } from './inventoryStatus'
+import { THROUGH_VENDOR_LOCATION_ID } from '../types'
+import type { InventoryItem, LocationDoc, StorageEntry } from '../types'
 
 const CSV_COLUMNS = [
   'id',
@@ -11,8 +13,7 @@ const CSV_COLUMNS = [
   'colorCustom',
   'tags',
   'totalQuantity',
-  'location',
-  'bin',
+  'storageEntries',
   'condition',
   'statusGood',
   'statusNeedsRepair',
@@ -26,7 +27,27 @@ const CSV_COLUMNS = [
   'photoUrls',
 ] as const
 
-export function exportInventoryCsv(items: InventoryItem[]): string {
+/** `LocationName>SubLocationName>Bin>Qty` segments joined by `;` — human-readable, round-trips through import. */
+function serializeStorageEntries(item: InventoryItem, locationsById: Map<string, LocationDoc>): string {
+  if (item.storageEntries?.length) {
+    return item.storageEntries
+      .map((e) => {
+        const loc = locationsById.get(e.locationId)
+        const sub = loc?.subLocations.find((s) => s.id === e.subLocationId)
+        return `${loc?.name ?? ''}>${sub?.name ?? ''}>${e.bin ?? ''}>${e.quantity}`
+      })
+      .join(';')
+  }
+  // Not yet migrated — export the dormant legacy fields as a single unresolved entry, so this
+  // export still works as a real backup even before the storage-entries migration has run.
+  if (item.location || item.totalQuantity) {
+    return `${item.location ?? ''}>>${item.bin ?? ''}>${item.totalQuantity ?? 0}`
+  }
+  return ''
+}
+
+export function exportInventoryCsv(items: InventoryItem[], locations: LocationDoc[]): string {
+  const locationsById = new Map(locations.map((l) => [l.id, l]))
   const rows = items.map((i) => ({
     id: i.id,
     name: i.name,
@@ -36,9 +57,8 @@ export function exportInventoryCsv(items: InventoryItem[]): string {
     color: i.color,
     colorCustom: i.colorCustom,
     tags: (i.tags || []).join(';'),
-    totalQuantity: i.totalQuantity,
-    location: i.location,
-    bin: i.bin,
+    totalQuantity: getItemTotalQuantity(i),
+    storageEntries: serializeStorageEntries(i, locationsById),
     condition: i.condition,
     statusGood: i.statusBreakdown?.good ?? 0,
     statusNeedsRepair: i.statusBreakdown?.needsRepair ?? 0,
@@ -91,9 +111,7 @@ export interface ImportPlanEntry {
     color: string
     colorCustom: string
     tags: string[]
-    totalQuantity: number
-    location: string
-    bin: string
+    storageEntries: StorageEntry[]
     condition: string
     statusBreakdown: { good: number; needsRepair: number; needsReplacement: number }
     model: string
@@ -132,9 +150,60 @@ function parseIntField(raw: string | undefined, fieldLabel: string, errors: stri
   return n
 }
 
+function resolveLocationByName(name: string, locations: LocationDoc[]): LocationDoc | undefined {
+  const trimmed = name.trim().toLowerCase()
+  return locations.find((l) => l.name.trim().toLowerCase() === trimmed)
+}
+
+/** New-format cell: `LocationName>SubLocationName>Bin>Qty` segments joined by `;`. Unresolvable location/sub-location names are row errors, not silently created — keeps locations as controlled records. */
+function parseStorageEntriesCell(cell: string, locations: LocationDoc[], errors: string[]): StorageEntry[] {
+  const entries: StorageEntry[] = []
+  const segments = cell
+    .split(';')
+    .map((s) => s.trim())
+    .filter(Boolean)
+  for (const segment of segments) {
+    const [locName = '', subName = '', bin = '', qtyRaw = ''] = segment.split('>')
+    const loc = resolveLocationByName(locName, locations)
+    if (!loc) {
+      errors.push(`Location "${locName.trim()}" not found — create it on the Locations page first`)
+      continue
+    }
+    let subLocationId: string | null = null
+    if (subName.trim()) {
+      const sub = loc.subLocations.find((s) => s.name.trim().toLowerCase() === subName.trim().toLowerCase())
+      if (!sub) {
+        errors.push(`Sub-location "${subName.trim()}" not found under "${loc.name}"`)
+        continue
+      }
+      subLocationId = sub.id
+    }
+    const qty = Number(qtyRaw.trim())
+    if (Number.isNaN(qty)) {
+      errors.push(`Storage entry quantity "${qtyRaw.trim()}" is not a number`)
+      continue
+    }
+    entries.push({ id: crypto.randomUUID(), locationId: loc.id, subLocationId, bin: bin.trim(), quantity: qty, packSize: null })
+  }
+  return entries
+}
+
+/** Legacy format: today's intake template's plain `location`/`bin`/`totalQuantity` columns, treated as one storage entry. */
+function parseLegacyLocationColumns(row: Record<string, string>, locations: LocationDoc[], errors: string[]): StorageEntry[] {
+  const locationName = (row.location || '').trim()
+  const loc = resolveLocationByName(locationName, locations)
+  if (!loc) {
+    errors.push(`Location "${locationName}" not found — create it on the Locations page first`)
+    return []
+  }
+  const qty = parseIntField(row.totalQuantity, 'totalQuantity', errors)
+  return [{ id: crypto.randomUUID(), locationId: loc.id, subLocationId: null, bin: (row.bin || '').trim(), quantity: qty, packSize: null }]
+}
+
 export function buildImportPlan(
   rows: Record<string, string>[],
   existingItems: InventoryItem[],
+  locations: LocationDoc[],
 ): ImportPlanEntry[] {
   const byId = new Map(existingItems.map((i) => [i.id, i]))
 
@@ -146,16 +215,33 @@ export function buildImportPlan(
     const category = (row.category || '').trim()
     if (!category) errors.push('Missing category')
 
-    const location = (row.location || '').trim()
-    if (!location) errors.push('Missing location')
+    const vendorId = (row.vendorId || '').trim()
+    const hasNewFormat = (row.storageEntries || '').trim() !== ''
+    const hasLegacyLocation = (row.location || '').trim() !== ''
 
-    const totalQuantity = parseIntField(row.totalQuantity, 'totalQuantity', errors)
+    let storageEntries: StorageEntry[]
+    if (hasNewFormat) {
+      storageEntries = parseStorageEntriesCell(row.storageEntries, locations, errors)
+    } else if (hasLegacyLocation) {
+      storageEntries = parseLegacyLocationColumns(row, locations, errors)
+    } else if (vendorId) {
+      const qty = parseIntField(row.totalQuantity, 'totalQuantity', errors)
+      storageEntries =
+        qty > 0
+          ? [{ id: crypto.randomUUID(), locationId: THROUGH_VENDOR_LOCATION_ID, subLocationId: null, bin: '', quantity: qty, packSize: null }]
+          : []
+    } else {
+      errors.push('Missing location (or a vendorId for a vendor-sourced item)')
+      storageEntries = []
+    }
+
+    const totalQuantity = storageEntries.reduce((sum, e) => sum + e.quantity, 0)
     const good = parseIntField(row.statusGood, 'statusGood', errors)
     const needsRepair = parseIntField(row.statusNeedsRepair, 'statusNeedsRepair', errors)
     const needsReplacement = parseIntField(row.statusNeedsReplacement, 'statusNeedsReplacement', errors)
     if (good + needsRepair + needsReplacement !== totalQuantity) {
       errors.push(
-        `Status counts (${good} + ${needsRepair} + ${needsReplacement}) don't sum to totalQuantity (${totalQuantity})`,
+        `Status counts (${good} + ${needsRepair} + ${needsReplacement}) don't sum to the quantity from storage entries (${totalQuantity})`,
       )
     }
 
@@ -174,9 +260,7 @@ export function buildImportPlan(
         color: row.color || '',
         colorCustom: row.colorCustom || '',
         tags: parseTags(row.tags),
-        totalQuantity,
-        location,
-        bin: row.bin || '',
+        storageEntries,
         condition: row.condition || '',
         statusBreakdown: { good, needsRepair, needsReplacement },
         model: row.model || '',
@@ -184,7 +268,7 @@ export function buildImportPlan(
         dimensions: row.dimensions || '',
         costPrice: parseOptionalNumber(row.costPrice),
         rentalPrice: parseOptionalNumber(row.rentalPrice),
-        vendorId: row.vendorId || '',
+        vendorId,
       },
       errors,
     }

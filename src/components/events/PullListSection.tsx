@@ -1,6 +1,7 @@
 import { useMemo, useState } from 'react'
 import { useReservationsForEvent } from '../../hooks/useReservations'
 import { useVendors } from '../../hooks/useVendors'
+import { useLocations } from '../../hooks/useLocations'
 import { buildPullList } from '../../lib/pullList'
 import { exportPullListPdf } from '../../lib/pullListPdf'
 import { Button } from '../ui/Button'
@@ -16,14 +17,16 @@ interface PullListSectionProps {
 export function PullListSection({ event, venueName, items }: PullListSectionProps) {
   const { reservations, loading, updateReservation } = useReservationsForEvent(event.id)
   const { vendors } = useVendors()
+  const { locations } = useLocations()
   const [editingDropOffs, setEditingDropOffs] = useState(false)
 
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
   const vendorsById = useMemo(() => new Map(vendors.map((v) => [v.id, v])), [vendors])
+  const locationsById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
 
   const groups = useMemo(
-    () => buildPullList(reservations, itemsById, vendorsById),
-    [reservations, itemsById, vendorsById],
+    () => buildPullList(reservations, itemsById, vendorsById, locationsById),
+    [reservations, itemsById, vendorsById, locationsById],
   )
 
   const totalLines = groups.reduce((sum, g) => sum + g.lines.length, 0)
@@ -67,7 +70,7 @@ export function PullListSection({ event, venueName, items }: PullListSectionProp
                   </thead>
                   <tbody className="divide-y divide-gray-100">
                     {group.lines.map((line) => (
-                      <tr key={line.reservationId}>
+                      <tr key={line.lineId}>
                         <td className="px-3 py-2 font-medium text-charcoal">{line.itemName}</td>
                         <td className="px-3 py-2 text-gray-600">{line.quantity}</td>
                         <td className="px-3 py-2 text-gray-600">{line.bin || '—'}</td>

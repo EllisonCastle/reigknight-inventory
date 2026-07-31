@@ -4,6 +4,7 @@ import { db } from '../../lib/firebase'
 import { Modal } from '../ui/Modal'
 import { Button } from '../ui/Button'
 import { buildImportPlan, parseCsvFile, type ImportPlanEntry } from '../../lib/csv'
+import { useLocations } from '../../hooks/useLocations'
 import type { InventoryItem } from '../../types'
 
 const BATCH_SIZE = 400
@@ -15,6 +16,7 @@ interface CsvImportModalProps {
 }
 
 export function CsvImportModal({ open, onClose, items }: CsvImportModalProps) {
+  const { locations } = useLocations()
   const [plan, setPlan] = useState<ImportPlanEntry[] | null>(null)
   const [fileName, setFileName] = useState('')
   const [error, setError] = useState('')
@@ -45,7 +47,7 @@ export function CsvImportModal({ open, onClose, items }: CsvImportModalProps) {
         setError('That file has no data rows.')
         return
       }
-      setPlan(buildImportPlan(rows, items))
+      setPlan(buildImportPlan(rows, items, locations))
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Could not parse that CSV.')
     }
@@ -140,7 +142,7 @@ export function CsvImportModal({ open, onClose, items }: CsvImportModalProps) {
                           <td className="px-3 py-1.5">{entry.rowNumber}</td>
                           <td className="px-3 py-1.5 capitalize">{entry.action}</td>
                           <td className="px-3 py-1.5">{entry.data.name || '—'}</td>
-                          <td className="px-3 py-1.5">{entry.data.totalQuantity}</td>
+                          <td className="px-3 py-1.5">{entry.data.storageEntries.reduce((sum, e) => sum + e.quantity, 0)}</td>
                           <td className="px-3 py-1.5 text-red-600">{entry.errors.join('; ')}</td>
                         </tr>
                       ))}

@@ -50,6 +50,7 @@ service cloud.firestore {
     match /reservations/{id}   { allow read, write: if isTeam(); }
     match /agendaItems/{id}    { allow read, write: if isTeam(); }
     match /vendors/{id}        { allow read, write: if isTeam(); }
+    match /locations/{id}      { allow read, write: if isTeam(); }
 
     // Inventory: admin or staff manage the catalog; any team member reads.
     match /inventoryItems/{id} {

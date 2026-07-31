@@ -25,6 +25,16 @@ export interface StatusBreakdown {
   needsReplacement: number
 }
 
+/** One place an item's units live: a location, optional sub-location, optional free-text bin, and a quantity. */
+export interface StorageEntry {
+  id: string
+  locationId: string
+  subLocationId: string | null
+  bin: string
+  quantity: number
+  packSize: number | null
+}
+
 export interface InventoryItem {
   id: string
   name: string
@@ -34,9 +44,7 @@ export interface InventoryItem {
   color: string
   colorCustom: string
   tags: string[]
-  totalQuantity: number
-  location: string
-  bin: string
+  storageEntries: StorageEntry[]
   condition: string
   statusBreakdown: StatusBreakdown
   photos: InventoryPhoto[]
@@ -48,7 +56,33 @@ export interface InventoryItem {
   vendorId: string
   createdAt: Timestamp | null
   updatedAt: Timestamp | null
+  /**
+   * Pre-Phase-B fields. Left dormant on migrated docs (not stripped, per the
+   * user's explicit call — original data stays recoverable on the doc itself).
+   * Only read as a defensive fallback for items that haven't run through the
+   * storage-entries migration yet; never written by any code after Checkpoint 1.
+   */
+  location?: string
+  bin?: string
+  totalQuantity?: number
 }
+
+/** subLocations are embedded on the parent LocationDoc — items reference subLocationId only, never a denormalized name, so renames propagate for free. */
+export interface SubLocation {
+  id: string
+  name: string
+}
+
+export interface LocationDoc {
+  id: string
+  name: string
+  type: 'standard' | 'vendor'
+  subLocations: SubLocation[]
+  createdAt: Timestamp | null
+  updatedAt: Timestamp | null
+}
+
+export const THROUGH_VENDOR_LOCATION_ID = 'through-vendor'
 
 export type EventStatus = 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
 

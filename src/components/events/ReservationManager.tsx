@@ -1,7 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { useReservationsForEvent } from '../../hooks/useReservations'
 import { checkInventoryAvailability, type InventoryAvailability } from '../../lib/availability'
-import { availableForRental } from '../../lib/inventoryStatus'
+import { availableForRental, getItemTotalQuantity } from '../../lib/inventoryStatus'
 import { localInputToTimestamp, timestampToLocalInput, formatTimestamp } from '../../lib/datetime'
 import { Button } from '../ui/Button'
 import { FormRow, Input, Select } from '../ui/Field'
@@ -66,7 +66,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
     setSaving(true)
     try {
       const ceiling = availableForRental(item)
-      const availability = await checkInventoryAvailability(itemId, item.totalQuantity, ceiling, fromTs, toTs, qty)
+      const availability = await checkInventoryAvailability(itemId, getItemTotalQuantity(item), ceiling, fromTs, toTs, qty)
       if (!availability.isAvailable) {
         setConflict(availability)
         return

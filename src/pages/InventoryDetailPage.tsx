@@ -7,10 +7,11 @@ import { Lightbox } from '../components/inventory/Lightbox'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
-import { attentionInfo, availableForRental } from '../lib/inventoryStatus'
+import { attentionInfo, availableForRental, getItemTotalQuantity } from '../lib/inventoryStatus'
 import { formatDate, formatRelativeTime } from '../lib/datetime'
 import { formatCurrency, grossProfit } from '../lib/currency'
 import { useVendors } from '../hooks/useVendors'
+import { useLocations } from '../hooks/useLocations'
 import type { InventoryPhoto } from '../types'
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -40,6 +41,9 @@ export function InventoryDetailPage() {
   const { vendors } = useVendors()
   const [editOpen, setEditOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
+
+  const { locations } = useLocations()
+  const locationsById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
 
   const item = items.find((i) => i.id === itemId)
   const vendor = item?.vendorId ? vendors.find((v) => v.id === item.vendorId) : undefined
@@ -145,9 +149,39 @@ export function InventoryDetailPage() {
         </div>
       )}
 
-      <div className="mb-4 grid grid-cols-2 gap-4">
-        <Field label="Location" value={item.location || (vendor ? 'Through Vendor' : '—')} />
-        <Field label="Bin" value={item.bin || '—'} />
+      <div className="mb-4">
+        <p className="mb-1.5 text-sm text-gray-500">Storage</p>
+        {item.storageEntries?.length ? (
+          <div className="flex flex-col gap-1.5">
+            {item.storageEntries.map((entry) => {
+              const loc = locationsById.get(entry.locationId)
+              const sub = loc?.subLocations.find((s) => s.id === entry.subLocationId)
+              return (
+                <Link
+                  key={entry.id}
+                  to={`/locations/${entry.locationId}`}
+                  className="flex items-center justify-between rounded-md border border-gray-200 px-3 py-2 text-base text-charcoal hover:bg-surface"
+                >
+                  <span>
+                    {loc?.name ?? 'Unknown location'}
+                    {sub ? ` › ${sub.name}` : ''}
+                    {entry.bin ? ` · ${entry.bin}` : ''}
+                  </span>
+                  <span className="text-gray-600">{entry.quantity}</span>
+                </Link>
+              )
+            })}
+          </div>
+        ) : vendor ? (
+          <p className="text-base text-charcoal">Through Vendor</p>
+        ) : item.location ? (
+          <p className="text-base text-charcoal">
+            {item.location}
+            {item.bin ? ` · ${item.bin}` : ''} <span className="text-sm text-gray-500">(not yet migrated)</span>
+          </p>
+        ) : (
+          <p className="text-base text-charcoal">—</p>
+        )}
       </div>
 
       {vendor && (
@@ -181,7 +215,7 @@ export function InventoryDetailPage() {
 
       <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
         <p className="mb-3 text-base font-semibold text-charcoal">
-          Status · {availableForRental(item)} available for rental of {item.totalQuantity} total owned
+          Status · {availableForRental(item)} available for rental of {getItemTotalQuantity(item)} total owned
         </p>
         <div className="grid grid-cols-3 gap-2">
           <StatusTile label="Good" value={availableForRental(item)} tone="neutral" />

@@ -5,11 +5,14 @@ import { PhotoUploader } from './PhotoUploader'
 import { TagInput } from './TagInput'
 import { ItemPresetPicker } from './ItemPresetPicker'
 import { StatusPanel } from './StatusPanel'
+import { StorageEntriesEditor } from './StorageEntriesEditor'
 import { CATEGORIES, COLORS, CONDITIONS, MATERIALS } from '../../constants/inventory'
-import { rebalanceForNewTotal, validateStatusCounts } from '../../lib/inventoryStatus'
+import { getItemTotalQuantity, rebalanceForNewTotal, reduceStorageEntriesBy, validateStatusCounts } from '../../lib/inventoryStatus'
 import { useVendors } from '../../hooks/useVendors'
+import { getOrCreateVendorLocation } from '../../lib/vendorLocation'
 import { formatCurrency } from '../../lib/currency'
-import type { InventoryItem, InventoryPhoto, StatusBreakdown } from '../../types'
+import { THROUGH_VENDOR_LOCATION_ID } from '../../types'
+import type { InventoryItem, InventoryPhoto, StatusBreakdown, StorageEntry } from '../../types'
 import type { ItemPreset } from '../../constants/itemPresets'
 
 export interface InventoryFormFields {
@@ -20,9 +23,7 @@ export interface InventoryFormFields {
   color: string
   colorCustom: string
   tags: string[]
-  totalQuantity: number
-  location: string
-  bin: string
+  storageEntries: StorageEntry[]
   condition: string
   statusBreakdown: StatusBreakdown
   model: string
@@ -35,6 +36,8 @@ export interface InventoryFormFields {
 
 interface InventoryFormProps {
   initial?: InventoryItem
+  /** Pre-fills one storage entry when opening the form from a location's "Add item here" — create mode only. */
+  initialStorageEntry?: { locationId: string; subLocationId?: string | null }
   onCancel: () => void
   onCreate: (data: InventoryFormFields) => Promise<string>
   onUpdate: (id: string, data: Partial<InventoryFormFields>) => Promise<void>
@@ -52,9 +55,7 @@ const blankDraftFields: InventoryFormFields = {
   color: '',
   colorCustom: '',
   tags: [],
-  totalQuantity: 0,
-  location: '',
-  bin: '',
+  storageEntries: [],
   condition: 'Good',
   statusBreakdown: emptyStatus,
   model: '',
@@ -65,7 +66,15 @@ const blankDraftFields: InventoryFormFields = {
   vendorId: '',
 }
 
-export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosChange, onDiscardDraft }: InventoryFormProps) {
+export function InventoryForm({
+  initial,
+  initialStorageEntry,
+  onCancel,
+  onCreate,
+  onUpdate,
+  onPhotosChange,
+  onDiscardDraft,
+}: InventoryFormProps) {
   const [name, setName] = useState(initial?.name ?? '')
   const [description, setDescription] = useState(initial?.description ?? '')
   const [category, setCategory] = useState(initial?.category ?? '')
@@ -73,25 +82,68 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
   const [color, setColor] = useState(initial?.color ?? '')
   const [colorCustom, setColorCustom] = useState(initial?.colorCustom ?? '')
   const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
-  const [totalQuantity, setTotalQuantity] = useState(initial?.totalQuantity ?? 0)
-  const [location, setLocation] = useState(initial?.location ?? '')
-  const [bin, setBin] = useState(initial?.bin ?? '')
+  const [vendorId, setVendorId] = useState(initial?.vendorId ?? '')
+  const { vendors } = useVendors()
+
+  const initialNonVendorEntries = (initial?.storageEntries ?? []).filter((e) => e.locationId !== THROUGH_VENDOR_LOCATION_ID)
+  const initialVendorQty = (initial?.storageEntries ?? [])
+    .filter((e) => e.locationId === THROUGH_VENDOR_LOCATION_ID)
+    .reduce((sum, e) => sum + e.quantity, 0)
+
+  const [storageEntries, setStorageEntries] = useState<StorageEntry[]>(() => {
+    if (initial) return initialNonVendorEntries
+    if (initialStorageEntry) {
+      return [
+        {
+          id: crypto.randomUUID(),
+          locationId: initialStorageEntry.locationId,
+          subLocationId: initialStorageEntry.subLocationId ?? null,
+          bin: '',
+          quantity: 0,
+          packSize: null,
+        },
+      ]
+    }
+    return []
+  })
+  const [vendorQuantity, setVendorQuantity] = useState<string>(initial ? String(initialVendorQty) : '')
+
+  const totalQuantity = vendorId ? Number(vendorQuantity) || 0 : getItemTotalQuantity({ storageEntries })
+  const prevTotalRef = useRef(totalQuantity)
+
   const [condition, setCondition] = useState(initial?.condition ?? 'Good')
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown>(
-    initial?.statusBreakdown ?? { ...emptyStatus, good: initial?.totalQuantity ?? 0 },
+    initial?.statusBreakdown ?? { ...emptyStatus, good: totalQuantity },
   )
   const [model, setModel] = useState(initial?.model ?? '')
   const [notes, setNotes] = useState(initial?.notes ?? '')
   const [dimensions, setDimensions] = useState(initial?.dimensions ?? '')
   const [costPrice, setCostPrice] = useState<string>(initial?.costPrice != null ? String(initial.costPrice) : '')
   const [rentalPrice, setRentalPrice] = useState<string>(initial?.rentalPrice != null ? String(initial.rentalPrice) : '')
-  const [vendorId, setVendorId] = useState(initial?.vendorId ?? '')
-  const { vendors } = useVendors()
 
   const [savedId, setSavedId] = useState<string | undefined>(initial?.id)
   const [photos, setPhotos] = useState<InventoryPhoto[]>(initial?.photos ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+
+  // Total quantity is now derived from storageEntries (or the vendor quantity), never typed
+  // directly — this keeps the good/needsRepair/needsReplacement auto-balance invariant firing
+  // no matter which input actually changed the total.
+  useEffect(() => {
+    const prev = prevTotalRef.current
+    if (prev !== totalQuantity) {
+      setStatusBreakdown((s) => rebalanceForNewTotal(s, prev, totalQuantity))
+      prevTotalRef.current = totalQuantity
+    }
+  }, [totalQuantity])
+
+  useEffect(() => {
+    if (vendorId) {
+      getOrCreateVendorLocation().catch(() => {
+        // non-fatal — the vendor location gets created on the next successful attempt
+      })
+    }
+  }, [vendorId])
 
   // For a brand-new item, a blank draft doc is created immediately on mount so the
   // photo uploader (which needs a real item id) is available right away instead of
@@ -149,16 +201,15 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
     setDescription(preset.description)
   }
 
-  const handleTotalQuantityChange = (raw: string) => {
-    const next = Math.max(0, Number(raw) || 0)
-    setStatusBreakdown((prev) => rebalanceForNewTotal(prev, totalQuantity, next))
-    setTotalQuantity(next)
-  }
-
   const handleStatusChange = (next: StatusBreakdown, totalQuantityDelta?: number) => {
     setStatusBreakdown(next)
-    if (totalQuantityDelta) {
-      setTotalQuantity((t) => t + totalQuantityDelta)
+    if (totalQuantityDelta && totalQuantityDelta < 0) {
+      const amount = -totalQuantityDelta
+      if (vendorId) {
+        setVendorQuantity((q) => String(Math.max(0, (Number(q) || 0) - amount)))
+      } else {
+        setStorageEntries((entries) => reduceStorageEntriesBy(entries, amount))
+      }
     }
   }
 
@@ -170,9 +221,20 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
     color,
     colorCustom: color === 'Custom' ? colorCustom.trim() : '',
     tags,
-    totalQuantity,
-    location: location.trim(),
-    bin: bin.trim(),
+    storageEntries: vendorId
+      ? Number(vendorQuantity) > 0
+        ? [
+            {
+              id: crypto.randomUUID(),
+              locationId: THROUGH_VENDOR_LOCATION_ID,
+              subLocationId: null,
+              bin: '',
+              quantity: Number(vendorQuantity),
+              packSize: null,
+            },
+          ]
+        : []
+      : storageEntries.filter((e) => e.locationId),
     condition,
     statusBreakdown,
     model: model.trim(),
@@ -187,7 +249,9 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
     e.preventDefault()
     if (!name.trim()) return setError('Name is required.')
     if (!category) return setError('Category is required.')
-    if (!location.trim() && !vendorId) return setError('Location is required (or select a vendor for a vendor-sourced item).')
+    if (!vendorId && !storageEntries.some((entry) => entry.locationId)) {
+      return setError('Add at least one storage location (or select a vendor for a vendor-sourced item).')
+    }
 
     const validation = validateStatusCounts(totalQuantity, statusBreakdown.needsRepair, statusBreakdown.needsReplacement)
     if (!validation.valid) return setError(validation.error ?? 'Status counts must reconcile with total quantity.')
@@ -215,6 +279,8 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
     setPhotos(next)
     await onPhotosChange(savedId, next)
   }
+
+  const hasLegacyLocation = Boolean(initial && !initial.storageEntries?.length && (initial.location || initial.totalQuantity))
 
   return (
     <form onSubmit={handleSubmit} className="flex flex-col gap-4">
@@ -288,40 +354,38 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
         </Select>
       </FormRow>
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormRow label={vendorId ? 'Location (optional for vendor-sourced items)' : 'Location'}>
-          <Input
-            value={location}
-            onChange={(e) => setLocation(e.target.value)}
-            placeholder={vendorId ? 'Through Vendor…' : 'Barn Shed…'}
-            required={!vendorId}
-          />
-        </FormRow>
-        <FormRow label="Bin (optional)">
-          <Input value={bin} onChange={(e) => setBin(e.target.value)} placeholder="Bin 17, Shelf B-3…" />
-        </FormRow>
-      </div>
+      {hasLegacyLocation && (
+        <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+          This item hasn&apos;t been migrated to the new location system yet. Previous location:{' '}
+          <span className="font-medium">{initial?.location || '—'}</span>
+          {initial?.bin ? ` · ${initial.bin}` : ''}, qty {initial?.totalQuantity ?? 0}. Add storage entries below, or run the
+          migration tool from the Locations page.
+        </p>
+      )}
 
-      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormRow label="Total quantity owned">
+      {vendorId ? (
+        <FormRow label="Quantity (through this vendor)">
           <Input
             type="number"
             inputMode="numeric"
             min={0}
-            value={totalQuantity}
-            onChange={(e) => handleTotalQuantityChange(e.target.value)}
+            value={vendorQuantity}
+            onChange={(e) => setVendorQuantity(e.target.value)}
           />
         </FormRow>
-        <FormRow label="Condition">
-          <Select value={condition} onChange={(e) => setCondition(e.target.value)}>
-            {CONDITIONS.map((c) => (
-              <option key={c} value={c}>
-                {c}
-              </option>
-            ))}
-          </Select>
-        </FormRow>
-      </div>
+      ) : (
+        <StorageEntriesEditor entries={storageEntries} onChange={setStorageEntries} namePrefixDefault={name} />
+      )}
+
+      <FormRow label="Condition">
+        <Select value={condition} onChange={(e) => setCondition(e.target.value)}>
+          {CONDITIONS.map((c) => (
+            <option key={c} value={c}>
+              {c}
+            </option>
+          ))}
+        </Select>
+      </FormRow>
 
       <StatusPanel totalQuantity={totalQuantity} statusBreakdown={statusBreakdown} onChange={handleStatusChange} />
 
