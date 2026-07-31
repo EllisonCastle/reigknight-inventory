@@ -14,6 +14,8 @@ import {
 import { CsvExportButton } from '../components/inventory/CsvExportButton'
 import { CsvImportModal } from '../components/inventory/CsvImportModal'
 import { QuickActionsMenu } from '../components/inventory/QuickActionsMenu'
+import { BatchMoveForm } from '../components/inventory/BatchMoveForm'
+import { runBatchMove } from '../lib/batchMove'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
@@ -63,11 +65,40 @@ export function InventoryPage() {
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<InventoryItem | undefined>(undefined)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [moveModalOpen, setMoveModalOpen] = useState(false)
 
   const filtered = useMemo(
     () => applyInventorySort(applyInventoryFilters(items, filters), sort, locationsById),
     [items, filters, sort, locationsById],
   )
+
+  // Batch move's source is whatever specific location the list is currently filtered to — moving
+  // only makes sense from one unambiguous starting point per the spec's "filter, then move" flow.
+  const sourceLocationId = filters.locationId || null
+  const sourceLocation = sourceLocationId ? locationsById.get(sourceLocationId) : undefined
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  const handleBatchMove = async (targetLocationId: string, targetSubLocationId: string | null) => {
+    if (!sourceLocationId) return
+    await runBatchMove(items, [...selectedIds], sourceLocationId, targetLocationId, targetSubLocationId)
+    setMoveModalOpen(false)
+    exitSelectMode()
+  }
 
   const openCreate = () => {
     setEditing(undefined)
@@ -122,6 +153,45 @@ export function InventoryPage() {
 
       <InventoryFilters items={items} value={filters} onChange={setFilters} sort={sort} onSortChange={setSort} />
 
+      {sourceLocationId && isAdminOrStaff && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-surface p-3">
+          <label className="flex min-h-[44px] items-center gap-2 text-base text-charcoal">
+            <input
+              type="checkbox"
+              checked={selectMode}
+              onChange={(e) => (e.target.checked ? setSelectMode(true) : exitSelectMode())}
+              className="h-5 w-5"
+            />
+            Select items to move out of {sourceLocation?.name ?? 'this location'}
+            {selectMode && selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ''}
+          </label>
+          {selectMode && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setSelectedIds(new Set(filtered.map((i) => i.id)))}
+                className="min-h-[44px]"
+              >
+                Select all ({filtered.length})
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={selectedIds.size === 0}
+                onClick={() => setSelectedIds(new Set())}
+                className="min-h-[44px]"
+              >
+                Clear
+              </Button>
+              <Button type="button" disabled={selectedIds.size === 0} onClick={() => setMoveModalOpen(true)} className="min-h-[44px]">
+                Move {selectedIds.size || ''} item{selectedIds.size === 1 ? '' : 's'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       <ErrorNotice message={error} />
 
       {loading ? (
@@ -139,6 +209,15 @@ export function InventoryPage() {
                   key={item.id}
                   className={`flex gap-3 rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${stripeClass(attention.tone)}`}
                 >
+                  {selectMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(item.id)}
+                      onChange={() => toggleSelected(item.id)}
+                      className="mt-1 h-5 w-5 shrink-0"
+                      aria-label={`Select ${item.name}`}
+                    />
+                  )}
                   <Link to={`/inventory/${item.id}`} className="shrink-0">
                     {primary ? (
                       <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
@@ -177,6 +256,7 @@ export function InventoryPage() {
             <table className="w-full text-base">
               <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
                 <tr>
+                  {selectMode && <th className="px-4 py-2.5" />}
                   <th className="px-4 py-2.5" />
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">Category</th>
@@ -193,6 +273,17 @@ export function InventoryPage() {
                   const attention = attentionInfo(item)
                   return (
                     <tr key={item.id} className={`border-l-4 ${stripeClass(attention.tone)}`}>
+                      {selectMode && (
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(item.id)}
+                            onChange={() => toggleSelected(item.id)}
+                            className="h-5 w-5"
+                            aria-label={`Select ${item.name}`}
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-2.5">
                         <Link to={`/inventory/${item.id}`}>
                           {primary ? (
@@ -263,6 +354,15 @@ export function InventoryPage() {
       </Modal>
 
       <CsvImportModal open={importOpen} onClose={() => setImportOpen(false)} items={items} />
+
+      <Modal open={moveModalOpen} onClose={() => setMoveModalOpen(false)} title="Move items">
+        <BatchMoveForm
+          sourceLocationName={sourceLocation?.name ?? ''}
+          itemCount={selectedIds.size}
+          onCancel={() => setMoveModalOpen(false)}
+          onConfirm={handleBatchMove}
+        />
+      </Modal>
     </div>
   )
 }
