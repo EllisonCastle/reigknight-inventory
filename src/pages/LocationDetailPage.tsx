@@ -56,6 +56,11 @@ export function LocationDetailPage() {
 
   const handleUpdate = async (id: string, data: Partial<InventoryFormFields>) => {
     await updateItem(id, data)
+    // InventoryForm creates a blank draft on mount (via handleCreate) so the photo uploader is
+    // ready immediately, then the user's actual "Create item" click confirms it via onUpdate, not
+    // a second onCreate call. This is the real confirm step — the one place on this page onUpdate
+    // is ever called, since the form here is always in create mode, never editing an existing item.
+    if (data.name) setJustAddedName(data.name)
   }
 
   const handlePhotosChange = async (id: string, photos: InventoryPhoto[]) => {
