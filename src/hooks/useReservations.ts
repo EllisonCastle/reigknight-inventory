@@ -7,6 +7,7 @@ import {
   onSnapshot,
   query,
   serverTimestamp,
+  updateDoc,
   where,
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
@@ -44,11 +45,17 @@ export function useReservationsForEvent(eventId: string | undefined) {
     return ref
   }
 
+  const updateReservation = async (id: string, data: Partial<Omit<Reservation, 'id' | 'eventId' | 'createdAt'>>) => {
+    await updateDoc(doc(db, 'reservations', id), data)
+    const reservation = reservations.find((r) => r.id === id)
+    if (reservation) await publishEventSnapshot(reservation.eventId)
+  }
+
   const deleteReservation = async (id: string) => {
     const reservation = reservations.find((r) => r.id === id)
     await deleteDoc(doc(db, 'reservations', id))
     if (reservation) await publishEventSnapshot(reservation.eventId)
   }
 
-  return { reservations, loading, error, createReservation, deleteReservation }
+  return { reservations, loading, error, createReservation, updateReservation, deleteReservation }
 }

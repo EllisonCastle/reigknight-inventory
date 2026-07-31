@@ -41,6 +41,11 @@ export interface InventoryItem {
   statusBreakdown: StatusBreakdown
   photos: InventoryPhoto[]
   model: string
+  notes: string
+  dimensions: string
+  costPrice: number | null
+  rentalPrice: number | null
+  vendorId: string
   createdAt: Timestamp | null
   updatedAt: Timestamp | null
 }
@@ -79,6 +84,7 @@ export interface Reservation {
   reservedFrom: Timestamp
   reservedTo: Timestamp
   eventStatus: EventStatus
+  dropOffLocation: string
   createdAt: Timestamp | null
 }
 
@@ -163,6 +169,7 @@ export interface TaskMessageDoc {
   authorName: string
   authorRole: MessageAuthorRole
   body: string
+  mentionedPersonIds: string[]
   createdAt: Timestamp
   editedAt: Timestamp | null
 }

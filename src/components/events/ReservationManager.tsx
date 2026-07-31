@@ -1,4 +1,4 @@
-import { useState, type FormEvent } from 'react'
+import { useEffect, useState, type FormEvent } from 'react'
 import { useReservationsForEvent } from '../../hooks/useReservations'
 import { checkInventoryAvailability, type InventoryAvailability } from '../../lib/availability'
 import { availableForRental } from '../../lib/inventoryStatus'
@@ -15,14 +15,20 @@ interface ReservationManagerProps {
 }
 
 export function ReservationManager({ event, items }: ReservationManagerProps) {
-  const { reservations, loading, error: loadError, createReservation, deleteReservation } = useReservationsForEvent(
-    event.id,
-  )
+  const {
+    reservations,
+    loading,
+    error: loadError,
+    createReservation,
+    updateReservation,
+    deleteReservation,
+  } = useReservationsForEvent(event.id)
 
   const [itemId, setItemId] = useState(items[0]?.id ?? '')
   const [quantity, setQuantity] = useState('1')
   const [reservedFrom, setReservedFrom] = useState(timestampToLocalInput(event.startAt))
   const [reservedTo, setReservedTo] = useState(timestampToLocalInput(event.endAt))
+  const [dropOffLocation, setDropOffLocation] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState<InventoryAvailability | null>(null)
@@ -71,8 +77,10 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
         reservedFrom: fromTs,
         reservedTo: toTs,
         eventStatus: event.status,
+        dropOffLocation: dropOffLocation.trim(),
       })
       setQuantity('1')
+      setDropOffLocation('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -104,6 +112,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
                 <th className="py-1.5">Qty</th>
                 <th className="py-1.5">From</th>
                 <th className="py-1.5">To</th>
+                <th className="py-1.5">Drop-off</th>
                 <th className="py-1.5" />
               </tr>
             </thead>
@@ -114,6 +123,9 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
                   <td className="py-1.5 text-gray-600">{r.quantity}</td>
                   <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedFrom)}</td>
                   <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedTo)}</td>
+                  <td className="py-1.5">
+                    <DropOffCell value={r.dropOffLocation ?? ''} onSave={(next) => updateReservation(r.id, { dropOffLocation: next })} />
+                  </td>
                   <td className="py-1.5 text-right">
                     <button
                       onClick={() => handleRemove(r.id)}
@@ -154,6 +166,13 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
         <FormRow label="To">
           <Input type="datetime-local" value={reservedTo} onChange={(e) => setReservedTo(e.target.value)} />
         </FormRow>
+        <FormRow label="Drop-off location (optional)">
+          <Input
+            value={dropOffLocation}
+            onChange={(e) => setDropOffLocation(e.target.value)}
+            placeholder="Main Stage, Kitchen area…"
+          />
+        </FormRow>
 
         <div className="sm:col-span-2 md:col-span-4">
           {conflict && itemById.get(itemId) && (
@@ -174,5 +193,32 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
         </div>
       </form>
     </div>
+  )
+}
+
+/** Inline-editable drop-off location for one reservation row — saves on blur, only when changed. */
+function DropOffCell({ value, onSave }: { value: string; onSave: (next: string) => void }) {
+  const [draft, setDraft] = useState(value)
+  const [focused, setFocused] = useState(false)
+
+  useEffect(() => {
+    if (!focused) setDraft(value)
+  }, [value, focused])
+
+  const handleBlur = () => {
+    setFocused(false)
+    const trimmed = draft.trim()
+    if (trimmed !== value) onSave(trimmed)
+  }
+
+  return (
+    <input
+      value={draft}
+      onChange={(e) => setDraft(e.target.value)}
+      onFocus={() => setFocused(true)}
+      onBlur={handleBlur}
+      placeholder="—"
+      className="min-h-[36px] w-full min-w-[120px] rounded-md border border-transparent bg-transparent px-1.5 text-sm text-gray-600 hover:border-gray-300 focus:border-regal focus:bg-white focus:outline-none focus:ring-1 focus:ring-regal"
+    />
   )
 }

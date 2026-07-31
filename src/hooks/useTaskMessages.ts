@@ -37,7 +37,7 @@ export function useTaskMessages(threadId: string | undefined) {
     )
   }, [threadId])
 
-  const postMessage = async (taskId: string, body: string) => {
+  const postMessage = async (taskId: string, body: string, mentionedPersonIds: string[] = []) => {
     if (!threadId) throw new Error('Missing thread.')
     const messageRef = doc(collection(db, 'taskMessages'))
     const batch = writeBatch(db)
@@ -48,6 +48,7 @@ export function useTaskMessages(threadId: string | undefined) {
       authorName: person?.fullName ?? 'Unknown',
       authorRole: person?.role === 'admin' ? 'admin' : 'staff',
       body: body.trim(),
+      mentionedPersonIds,
       createdAt: serverTimestamp(),
       editedAt: null,
     })
@@ -70,4 +71,31 @@ export function useTaskMessages(threadId: string | undefined) {
   }
 
   return { messages, loading, error, postMessage, editMessage, deleteMessage }
+}
+
+/**
+ * Task ids where this person has been @-mentioned in any message, across
+ * every task — not just ones they're assigned to. Feeds into
+ * useUnreadTaskMessages so a mention notifies someone even on a task they
+ * have no other reason to be watching.
+ */
+export function useMentionedTaskIds(personId: string | undefined, enabled: boolean) {
+  const [taskIds, setTaskIds] = useState<Set<string>>(new Set())
+
+  useEffect(() => {
+    if (!enabled || !personId) {
+      setTaskIds(new Set())
+      return
+    }
+    const q = query(collection(db, 'taskMessages'), where('mentionedPersonIds', 'array-contains', personId))
+    return onSnapshot(
+      q,
+      (snap) => {
+        setTaskIds(new Set(snap.docs.map((d) => (d.data() as TaskMessageDoc).taskId)))
+      },
+      () => setTaskIds(new Set()),
+    )
+  }, [personId, enabled])
+
+  return taskIds
 }

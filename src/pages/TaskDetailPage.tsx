@@ -82,7 +82,7 @@ export function TaskDetailPage() {
         <p className="text-base text-charcoal">{assigneeNames.length > 0 ? assigneeNames.join(', ') : 'Unassigned'}</p>
       </div>
 
-      {isAdminOrStaff && <DiscussionSection taskId={task.id} eventId={task.eventId} />}
+      {isAdminOrStaff && <DiscussionSection taskId={task.id} eventId={task.eventId} people={people} />}
 
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit task" wide>
         <TaskForm initial={task} people={people} onCancel={() => setEditOpen(false)} onSubmit={handleSubmit} />

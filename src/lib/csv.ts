@@ -18,6 +18,11 @@ const CSV_COLUMNS = [
   'statusNeedsRepair',
   'statusNeedsReplacement',
   'model',
+  'notes',
+  'dimensions',
+  'costPrice',
+  'rentalPrice',
+  'vendorId',
   'photoUrls',
 ] as const
 
@@ -39,6 +44,11 @@ export function exportInventoryCsv(items: InventoryItem[]): string {
     statusNeedsRepair: i.statusBreakdown?.needsRepair ?? 0,
     statusNeedsReplacement: i.statusBreakdown?.needsReplacement ?? 0,
     model: i.model,
+    notes: i.notes ?? '',
+    dimensions: i.dimensions ?? '',
+    costPrice: i.costPrice ?? '',
+    rentalPrice: i.rentalPrice ?? '',
+    vendorId: i.vendorId ?? '',
     photoUrls: (i.photos || []).map((p) => p.url).join(';'),
   }))
   return Papa.unparse({ fields: [...CSV_COLUMNS], data: rows })
@@ -87,8 +97,20 @@ export interface ImportPlanEntry {
     condition: string
     statusBreakdown: { good: number; needsRepair: number; needsReplacement: number }
     model: string
+    notes: string
+    dimensions: string
+    costPrice: number | null
+    rentalPrice: number | null
+    vendorId: string
   }
   errors: string[]
+}
+
+function parseOptionalNumber(raw: string | undefined): number | null {
+  const trimmed = (raw ?? '').trim()
+  if (trimmed === '') return null
+  const n = Number(trimmed)
+  return Number.isNaN(n) ? null : n
 }
 
 function parseTags(cell: string | undefined): string[] {
@@ -158,6 +180,11 @@ export function buildImportPlan(
         condition: row.condition || '',
         statusBreakdown: { good, needsRepair, needsReplacement },
         model: row.model || '',
+        notes: row.notes || '',
+        dimensions: row.dimensions || '',
+        costPrice: parseOptionalNumber(row.costPrice),
+        rentalPrice: parseOptionalNumber(row.rentalPrice),
+        vendorId: row.vendorId || '',
       },
       errors,
     }
