@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import { db } from './firebase'
+import { getInvoicedQuantity } from './reservationQuantity'
 import type {
   AgendaItemDoc,
   EventDoc,
@@ -78,7 +79,8 @@ export async function publishEventSnapshot(eventId: string): Promise<void> {
       return {
         itemId: r.itemId,
         itemName: item?.name ?? '(deleted item)',
-        quantity: r.quantity,
+        // Customer-facing view shows what they're billed for, not any bin-rounded committed spare.
+        quantity: getInvoicedQuantity(r),
         primaryPhotoUrl: item ? primaryPhotoUrl(item.photos) : null,
       }
     }),

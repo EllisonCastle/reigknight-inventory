@@ -114,12 +114,15 @@ export interface Reservation {
   id: string
   eventId: string
   itemId: string
-  quantity: number
+  quantityInvoiced: number
+  quantityCommitted: number
   reservedFrom: Timestamp
   reservedTo: Timestamp
   eventStatus: EventStatus
   dropOffLocation: string
   createdAt: Timestamp | null
+  /** Pre-Checkpoint-3 field, dormant on old reservations — read as a fallback until edited. */
+  quantity?: number
 }
 
 export interface Person {

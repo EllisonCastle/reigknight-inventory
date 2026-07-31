@@ -73,6 +73,8 @@ export interface InventoryAvailability {
  * `availableForRentalCeiling` is totalQuantity minus units marked Needs Repair /
  * Needs Replacement (see src/lib/inventoryStatus.ts) — units out of service can't
  * be assigned to an event even if no one else has reserved them yet.
+ * `requestedQty` is the proposed *committed* quantity — the number that blocks
+ * inventory — not the invoiced quantity a customer is billed for (Checkpoint 3).
  */
 export async function checkInventoryAvailability(
   itemId: string,
@@ -100,7 +102,9 @@ export async function checkInventoryAvailability(
       r.eventStatus !== 'cancelled' &&
       reservedTo.toMillis() > from.toMillis()
     ) {
-      reserved += r.quantity as number
+      // Committed quantity is what blocks availability; falls back to the pre-Checkpoint-3
+      // single `quantity` field for reservations that haven't been edited since.
+      reserved += ((r.quantityCommitted ?? r.quantity ?? 0) as number)
     }
   })
 

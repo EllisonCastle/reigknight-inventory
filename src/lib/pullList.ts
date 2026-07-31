@@ -1,3 +1,4 @@
+import { getCommittedQuantity } from './reservationQuantity'
 import type { InventoryItem, LocationDoc, Reservation, VendorDoc } from '../types'
 
 export interface PullListLineItem {
@@ -36,6 +37,10 @@ function explodeReservation(
   vendorsById: Map<string, VendorDoc>,
   locationsById: Map<string, LocationDoc>,
 ): PullListLineItem[] {
+  // Pull list quantity is the committed amount — what's actually blocked/set aside for the
+  // event, including any bin-rounded spare — not the invoiced amount the customer is billed for.
+  const committedQty = getCommittedQuantity(reservation)
+
   const item = itemsById.get(reservation.itemId)
   if (!item) {
     return [
@@ -44,7 +49,7 @@ function explodeReservation(
         reservationId: reservation.id,
         itemId: reservation.itemId,
         itemName: '(deleted item)',
-        quantity: reservation.quantity,
+        quantity: committedQty,
         location: 'Unknown',
         bin: '',
         dropOffLocation: reservation.dropOffLocation || '',
@@ -60,7 +65,7 @@ function explodeReservation(
         reservationId: reservation.id,
         itemId: item.id,
         itemName: item.name,
-        quantity: reservation.quantity,
+        quantity: committedQty,
         location: `Through Vendor: ${vendor?.name ?? 'Unknown vendor'}`,
         bin: '',
         dropOffLocation: reservation.dropOffLocation || '',
@@ -76,7 +81,7 @@ function explodeReservation(
         reservationId: reservation.id,
         itemId: item.id,
         itemName: item.name,
-        quantity: reservation.quantity,
+        quantity: committedQty,
         location: item.location || 'Unknown location',
         bin: item.bin || '',
         dropOffLocation: reservation.dropOffLocation || '',
@@ -86,7 +91,7 @@ function explodeReservation(
 
   const entries = [...item.storageEntries].sort((a, b) => b.quantity - a.quantity)
   const lines: PullListLineItem[] = []
-  let remaining = reservation.quantity
+  let remaining = committedQty
   for (const entry of entries) {
     if (remaining <= 0) break
     const take = Math.min(entry.quantity, remaining)
