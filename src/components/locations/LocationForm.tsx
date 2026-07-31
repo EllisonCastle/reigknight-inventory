@@ -129,7 +129,9 @@ export function LocationForm({
                 <li key={sub.id} className="flex items-center gap-2 rounded-md border border-gray-200 px-2 py-1.5">
                   {renamingId === sub.id ? (
                     <>
-                      <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} className="flex-1" autoFocus />
+                      <div className="min-w-0 flex-1">
+                        <Input value={renameValue} onChange={(e) => setRenameValue(e.target.value)} autoFocus />
+                      </div>
                       <button
                         type="button"
                         onClick={() => handleRename(sub.id)}
@@ -173,12 +175,13 @@ export function LocationForm({
           )}
           {subError && <p className="mb-2 text-sm text-red-600">{subError}</p>}
           <div className="flex gap-2">
-            <Input
-              value={newSubName}
-              onChange={(e) => setNewSubName(e.target.value)}
-              placeholder="Cage, Marketing Room, Kitchen…"
-              className="flex-1"
-            />
+            <div className="min-w-0 flex-1">
+              <Input
+                value={newSubName}
+                onChange={(e) => setNewSubName(e.target.value)}
+                placeholder="Cage, Marketing Room, Kitchen…"
+              />
+            </div>
             <Button type="button" variant="secondary" disabled={addingSub || !newSubName.trim()} onClick={handleAddSub}>
               {addingSub ? 'Adding…' : '+ Add'}
             </Button>

@@ -115,35 +115,38 @@ export function MigrationTool({ items, locations, createLocation }: MigrationToo
                         <td className="px-4 py-2.5 text-gray-600">{count}</td>
                         <td className="px-4 py-2.5">
                           <div className="flex flex-wrap items-center gap-2">
-                            <Select
-                              value={choice.mode === 'existing' ? choice.locationId ?? '' : '__new__'}
-                              onChange={(e) => {
-                                const v = e.target.value
-                                if (v === '__new__') setChoice(value, { ...choice, mode: 'new', newName: value })
-                                else setChoice(value, { ...choice, mode: 'existing', locationId: v })
-                              }}
-                              className="w-auto"
-                            >
-                              <option value="__new__">Create new location…</option>
-                              {locations.map((l) => (
-                                <option key={l.id} value={l.id}>
-                                  {l.name}
-                                </option>
-                              ))}
-                            </Select>
+                            <div className="w-48">
+                              <Select
+                                value={choice.mode === 'existing' ? choice.locationId ?? '' : '__new__'}
+                                onChange={(e) => {
+                                  const v = e.target.value
+                                  if (v === '__new__') setChoice(value, { ...choice, mode: 'new', newName: value })
+                                  else setChoice(value, { ...choice, mode: 'existing', locationId: v })
+                                }}
+                              >
+                                <option value="__new__">Create new location…</option>
+                                {locations.map((l) => (
+                                  <option key={l.id} value={l.id}>
+                                    {l.name}
+                                  </option>
+                                ))}
+                              </Select>
+                            </div>
                             {choice.mode === 'new' && (
-                              <Input
-                                value={choice.newName ?? ''}
-                                onChange={(e) => setChoice(value, { ...choice, newName: e.target.value })}
-                                className="w-auto"
-                              />
+                              <div className="w-40">
+                                <Input
+                                  value={choice.newName ?? ''}
+                                  onChange={(e) => setChoice(value, { ...choice, newName: e.target.value })}
+                                />
+                              </div>
                             )}
-                            <Input
-                              value={choice.subLocationName ?? ''}
-                              onChange={(e) => setChoice(value, { ...choice, subLocationName: e.target.value })}
-                              placeholder="Sub-location (optional)"
-                              className="w-auto"
-                            />
+                            <div className="w-44">
+                              <Input
+                                value={choice.subLocationName ?? ''}
+                                onChange={(e) => setChoice(value, { ...choice, subLocationName: e.target.value })}
+                                placeholder="Sub-location (optional)"
+                              />
+                            </div>
                           </div>
                         </td>
                       </tr>

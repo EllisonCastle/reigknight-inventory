@@ -130,15 +130,18 @@ export function BinScaffoldTool({ locations, namePrefixDefault, onConfirm, onCan
           ) : (
             rows.map((row) => (
               <div key={row.id} className="flex items-center gap-2">
-                <Input value={row.name} onChange={(e) => updateRow(row.id, { name: e.target.value })} className="flex-1" />
-                <Input
-                  type="number"
-                  inputMode="numeric"
-                  min={0}
-                  value={row.quantity}
-                  onChange={(e) => updateRow(row.id, { quantity: Math.max(0, Number(e.target.value) || 0) })}
-                  className="w-24"
-                />
+                <div className="min-w-0 flex-1">
+                  <Input value={row.name} onChange={(e) => updateRow(row.id, { name: e.target.value })} />
+                </div>
+                <div className="w-24 shrink-0">
+                  <Input
+                    type="number"
+                    inputMode="numeric"
+                    min={0}
+                    value={row.quantity}
+                    onChange={(e) => updateRow(row.id, { quantity: Math.max(0, Number(e.target.value) || 0) })}
+                  />
+                </div>
                 <button
                   type="button"
                   onClick={() => removeRow(row.id)}

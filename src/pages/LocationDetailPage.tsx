@@ -112,14 +112,16 @@ export function LocationDetailPage() {
         {isAdminOrStaff && (
           <div className="flex flex-wrap items-center gap-2">
             {location.subLocations.length > 0 && (
-              <Select value={addSubLocationId ?? ''} onChange={(e) => setAddSubLocationId(e.target.value || null)} className="w-auto">
-                <option value="">No sub-location</option>
-                {location.subLocations.map((s) => (
-                  <option key={s.id} value={s.id}>
-                    {s.name}
-                  </option>
-                ))}
-              </Select>
+              <div className="w-48">
+                <Select value={addSubLocationId ?? ''} onChange={(e) => setAddSubLocationId(e.target.value || null)}>
+                  <option value="">No sub-location</option>
+                  {location.subLocations.map((s) => (
+                    <option key={s.id} value={s.id}>
+                      {s.name}
+                    </option>
+                  ))}
+                </Select>
+              </div>
             )}
             <Button onClick={openAdd}>+ Add item here</Button>
           </div>
