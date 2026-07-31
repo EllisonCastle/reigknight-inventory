@@ -8,6 +8,7 @@ import { useVendors } from '../hooks/useVendors'
 import { usePermissions } from '../hooks/usePermissions'
 import { EventForm, type EventFormFields } from '../components/events/EventForm'
 import { ReservationManager } from '../components/events/ReservationManager'
+import { PullListSection } from '../components/events/PullListSection'
 import { TaskManager } from '../components/tasks/TaskManager'
 import { AgendaManager } from '../components/agenda/AgendaManager'
 import { Modal } from '../components/ui/Modal'
@@ -113,6 +114,8 @@ export function EventDetailPage() {
       </div>
 
       <ReservationManager event={event} items={items} />
+
+      <PullListSection event={event} venueName={venue?.name ?? 'Unknown venue'} items={items} />
 
       <TaskManager eventId={event.id} people={people} />
 

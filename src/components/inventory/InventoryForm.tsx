@@ -7,6 +7,8 @@ import { ItemPresetPicker } from './ItemPresetPicker'
 import { StatusPanel } from './StatusPanel'
 import { CATEGORIES, COLORS, CONDITIONS, MATERIALS } from '../../constants/inventory'
 import { rebalanceForNewTotal, validateStatusCounts } from '../../lib/inventoryStatus'
+import { useVendors } from '../../hooks/useVendors'
+import { formatCurrency } from '../../lib/currency'
 import type { InventoryItem, InventoryPhoto, StatusBreakdown } from '../../types'
 import type { ItemPreset } from '../../constants/itemPresets'
 
@@ -24,6 +26,11 @@ export interface InventoryFormFields {
   condition: string
   statusBreakdown: StatusBreakdown
   model: string
+  notes: string
+  dimensions: string
+  costPrice: number | null
+  rentalPrice: number | null
+  vendorId: string
 }
 
 interface InventoryFormProps {
@@ -51,6 +58,11 @@ const blankDraftFields: InventoryFormFields = {
   condition: 'Good',
   statusBreakdown: emptyStatus,
   model: '',
+  notes: '',
+  dimensions: '',
+  costPrice: null,
+  rentalPrice: null,
+  vendorId: '',
 }
 
 export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosChange, onDiscardDraft }: InventoryFormProps) {
@@ -69,6 +81,12 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
     initial?.statusBreakdown ?? { ...emptyStatus, good: initial?.totalQuantity ?? 0 },
   )
   const [model, setModel] = useState(initial?.model ?? '')
+  const [notes, setNotes] = useState(initial?.notes ?? '')
+  const [dimensions, setDimensions] = useState(initial?.dimensions ?? '')
+  const [costPrice, setCostPrice] = useState<string>(initial?.costPrice != null ? String(initial.costPrice) : '')
+  const [rentalPrice, setRentalPrice] = useState<string>(initial?.rentalPrice != null ? String(initial.rentalPrice) : '')
+  const [vendorId, setVendorId] = useState(initial?.vendorId ?? '')
+  const { vendors } = useVendors()
 
   const [savedId, setSavedId] = useState<string | undefined>(initial?.id)
   const [photos, setPhotos] = useState<InventoryPhoto[]>(initial?.photos ?? [])
@@ -158,13 +176,18 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
     condition,
     statusBreakdown,
     model: model.trim(),
+    notes: notes.trim(),
+    dimensions: dimensions.trim(),
+    costPrice: costPrice.trim() === '' ? null : Number(costPrice),
+    rentalPrice: rentalPrice.trim() === '' ? null : Number(rentalPrice),
+    vendorId,
   })
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return setError('Name is required.')
     if (!category) return setError('Category is required.')
-    if (!location.trim()) return setError('Location is required.')
+    if (!location.trim() && !vendorId) return setError('Location is required (or select a vendor for a vendor-sourced item).')
 
     const validation = validateStatusCounts(totalQuantity, statusBreakdown.needsRepair, statusBreakdown.needsReplacement)
     if (!validation.valid) return setError(validation.error ?? 'Status counts must reconcile with total quantity.')
@@ -254,9 +277,25 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
         <TagInput value={tags} onChange={setTags} />
       </FormRow>
 
+      <FormRow label="Vendor (optional — for items sourced through a vendor rather than owned stock)">
+        <Select value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+          <option value="">None (owned stock)</option>
+          {vendors.map((v) => (
+            <option key={v.id} value={v.id}>
+              {v.name}
+            </option>
+          ))}
+        </Select>
+      </FormRow>
+
       <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
-        <FormRow label="Location">
-          <Input value={location} onChange={(e) => setLocation(e.target.value)} placeholder="Barn Shed…" required />
+        <FormRow label={vendorId ? 'Location (optional for vendor-sourced items)' : 'Location'}>
+          <Input
+            value={location}
+            onChange={(e) => setLocation(e.target.value)}
+            placeholder={vendorId ? 'Through Vendor…' : 'Barn Shed…'}
+            required={!vendorId}
+          />
         </FormRow>
         <FormRow label="Bin (optional)">
           <Input value={bin} onChange={(e) => setBin(e.target.value)} placeholder="Bin 17, Shelf B-3…" />
@@ -286,8 +325,47 @@ export function InventoryForm({ initial, onCancel, onCreate, onUpdate, onPhotosC
 
       <StatusPanel totalQuantity={totalQuantity} statusBreakdown={statusBreakdown} onChange={handleStatusChange} />
 
-      <FormRow label="Model (optional)">
-        <Input value={model} onChange={(e) => setModel(e.target.value)} />
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FormRow label="Model (optional)">
+          <Input value={model} onChange={(e) => setModel(e.target.value)} />
+        </FormRow>
+        <FormRow label="Dimensions (optional)">
+          <Input value={dimensions} onChange={(e) => setDimensions(e.target.value)} placeholder={'60in dia x 30in H'} />
+        </FormRow>
+      </div>
+
+      <div className="grid grid-cols-1 gap-4 sm:grid-cols-2">
+        <FormRow label="Cost price per unit (optional)">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            value={costPrice}
+            onChange={(e) => setCostPrice(e.target.value)}
+            placeholder="0.00"
+          />
+        </FormRow>
+        <FormRow label="Rental price per unit (optional)">
+          <Input
+            type="number"
+            inputMode="decimal"
+            min={0}
+            step="0.01"
+            value={rentalPrice}
+            onChange={(e) => setRentalPrice(e.target.value)}
+            placeholder="0.00"
+          />
+        </FormRow>
+      </div>
+      {costPrice.trim() !== '' && rentalPrice.trim() !== '' && (
+        <p className="-mt-2 text-base text-gray-600">
+          Gross profit per unit: <span className="font-medium text-charcoal">{formatCurrency(Number(rentalPrice) - Number(costPrice))}</span>
+        </p>
+      )}
+
+      <FormRow label="Notes (optional — internal only)">
+        <TextArea rows={2} value={notes} onChange={(e) => setNotes(e.target.value)} />
       </FormRow>
 
       {error && <p className="text-base text-red-600">{error}</p>}

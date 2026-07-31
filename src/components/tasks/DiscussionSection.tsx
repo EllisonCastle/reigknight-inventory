@@ -4,18 +4,21 @@ import { useMyReadReceipts, markTaskRead } from '../../hooks/useReadReceipts'
 import { useAuth } from '../../hooks/useAuth'
 import { usePermissions } from '../../hooks/usePermissions'
 import { ThreadPanel } from './ThreadPanel'
+import { MentionTextarea } from './MentionTextarea'
 import { Button } from '../ui/Button'
 import { Modal } from '../ui/Modal'
-import { FormRow, Input, TextArea } from '../ui/Field'
+import { FormRow, Input } from '../ui/Field'
 import { ErrorNotice } from '../ui/ErrorNotice'
 import { receiptMapByTask, unreadThreadsForTask } from '../../lib/taskMessaging'
+import type { Person } from '../../types'
 
 interface DiscussionSectionProps {
   taskId: string
   eventId: string
+  people: Person[]
 }
 
-export function DiscussionSection({ taskId, eventId }: DiscussionSectionProps) {
+export function DiscussionSection({ taskId, eventId, people }: DiscussionSectionProps) {
   const { threads, loading, error, createThread, resolveThread, reopenThread } = useTaskThreads(taskId, eventId)
   const { receipts } = useMyReadReceipts()
   const { user } = useAuth()
@@ -23,6 +26,11 @@ export function DiscussionSection({ taskId, eventId }: DiscussionSectionProps) {
   const [showResolved, setShowResolved] = useState(false)
   const [expandedId, setExpandedId] = useState<string | null>(null)
   const [newThreadOpen, setNewThreadOpen] = useState(false)
+
+  const mentionCandidates = useMemo(
+    () => people.filter((p) => p.active && p.authUid && (p.role === 'admin' || p.role === 'staff')),
+    [people],
+  )
 
   const receiptsByTask = useMemo(() => receiptMapByTask(receipts), [receipts])
   const unreadIds = useMemo(
@@ -39,8 +47,8 @@ export function DiscussionSection({ taskId, eventId }: DiscussionSectionProps) {
 
   const visible = threads.filter((t) => showResolved || !t.resolved)
 
-  const handleCreate = async (title: string, body: string) => {
-    const id = await createThread(title, body)
+  const handleCreate = async (title: string, body: string, mentionedPersonIds: string[]) => {
+    const id = await createThread(title, body, mentionedPersonIds)
     setNewThreadOpen(false)
     setExpandedId(id)
   }
@@ -80,6 +88,7 @@ export function DiscussionSection({ taskId, eventId }: DiscussionSectionProps) {
               unread={unreadIds.has(thread.id)}
               isAdmin={isAdmin}
               currentUid={user?.uid}
+              mentionCandidates={mentionCandidates}
               onResolve={resolveThread}
               onReopen={reopenThread}
             />
@@ -88,7 +97,7 @@ export function DiscussionSection({ taskId, eventId }: DiscussionSectionProps) {
       )}
 
       <Modal open={newThreadOpen} onClose={() => setNewThreadOpen(false)} title="New thread">
-        <NewThreadForm onCancel={() => setNewThreadOpen(false)} onSubmit={handleCreate} />
+        <NewThreadForm onCancel={() => setNewThreadOpen(false)} onSubmit={handleCreate} mentionCandidates={mentionCandidates} />
       </Modal>
     </div>
   )
@@ -97,12 +106,15 @@ export function DiscussionSection({ taskId, eventId }: DiscussionSectionProps) {
 function NewThreadForm({
   onCancel,
   onSubmit,
+  mentionCandidates,
 }: {
   onCancel: () => void
-  onSubmit: (title: string, body: string) => Promise<void>
+  onSubmit: (title: string, body: string, mentionedPersonIds: string[]) => Promise<void>
+  mentionCandidates: Person[]
 }) {
   const [title, setTitle] = useState('')
   const [body, setBody] = useState('')
+  const [mentionedIds, setMentionedIds] = useState<string[]>([])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
@@ -119,7 +131,7 @@ function NewThreadForm({
     setError('')
     setSaving(true)
     try {
-      await onSubmit(title, body)
+      await onSubmit(title, body, mentionedIds)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -133,7 +145,17 @@ function NewThreadForm({
         <Input value={title} onChange={(e) => setTitle(e.target.value)} maxLength={120} required />
       </FormRow>
       <FormRow label="First message">
-        <TextArea value={body} onChange={(e) => setBody(e.target.value)} maxLength={2000} rows={3} required />
+        <MentionTextarea
+          value={body}
+          onChange={setBody}
+          mentionedIds={mentionedIds}
+          onMentionedIdsChange={setMentionedIds}
+          people={mentionCandidates}
+          maxLength={2000}
+          rows={3}
+          placeholder="@ to mention someone"
+          className="min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-charcoal focus:border-regal focus:outline-none focus:ring-1 focus:ring-regal"
+        />
       </FormRow>
       {error && <p className="text-base text-red-600">{error}</p>}
       <div className="mt-1 flex justify-end gap-2">

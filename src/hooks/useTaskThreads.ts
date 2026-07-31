@@ -37,7 +37,7 @@ export function useTaskThreads(taskId: string | undefined, eventId: string | und
     )
   }, [taskId])
 
-  const createThread = async (title: string, firstMessageBody: string) => {
+  const createThread = async (title: string, firstMessageBody: string, mentionedPersonIds: string[] = []) => {
     if (!taskId || !eventId) throw new Error('Missing task context.')
     const threadRef = doc(collection(db, 'taskThreads'))
     const messageRef = doc(collection(db, 'taskMessages'))
@@ -62,6 +62,7 @@ export function useTaskThreads(taskId: string | undefined, eventId: string | und
       authorName: person?.fullName ?? 'Unknown',
       authorRole: person?.role === 'admin' ? 'admin' : 'staff',
       body: firstMessageBody.trim(),
+      mentionedPersonIds,
       createdAt: serverTimestamp(),
       editedAt: null,
     })

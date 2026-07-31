@@ -9,6 +9,8 @@ import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
 import { attentionInfo, availableForRental } from '../lib/inventoryStatus'
 import { formatDate, formatRelativeTime } from '../lib/datetime'
+import { formatCurrency, grossProfit } from '../lib/currency'
+import { useVendors } from '../hooks/useVendors'
 import type { InventoryPhoto } from '../types'
 
 function Field({ label, value }: { label: string; value: string }) {
@@ -35,10 +37,12 @@ export function InventoryDetailPage() {
   const { itemId } = useParams<{ itemId: string }>()
   const { items, loading, updateItem } = useInventoryItems()
   const { isAdminOrStaff } = usePermissions()
+  const { vendors } = useVendors()
   const [editOpen, setEditOpen] = useState(false)
   const [lightboxIndex, setLightboxIndex] = useState<number | null>(null)
 
   const item = items.find((i) => i.id === itemId)
+  const vendor = item?.vendorId ? vendors.find((v) => v.id === item.vendorId) : undefined
 
   const sortedPhotos = useMemo(() => {
     if (!item) return []
@@ -122,6 +126,7 @@ export function InventoryDetailPage() {
         <Field label="Color" value={item.color === 'Custom' ? item.colorCustom || 'Custom' : item.color || '—'} />
         <Field label="Condition" value={item.condition || '—'} />
         <Field label="Model" value={item.model || '—'} />
+        <Field label="Dimensions" value={item.dimensions || '—'} />
       </div>
 
       {item.tags.length > 0 && (
@@ -141,9 +146,38 @@ export function InventoryDetailPage() {
       )}
 
       <div className="mb-4 grid grid-cols-2 gap-4">
-        <Field label="Location" value={item.location || '—'} />
+        <Field label="Location" value={item.location || (vendor ? 'Through Vendor' : '—')} />
         <Field label="Bin" value={item.bin || '—'} />
       </div>
+
+      {vendor && (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+          <p className="mb-1 text-sm text-gray-500">Sourced through vendor</p>
+          <p className="text-base font-medium text-charcoal">{vendor.name}</p>
+          {(vendor.contact || vendor.phone || vendor.email) && (
+            <p className="text-sm text-gray-600">
+              {[vendor.contact, vendor.phone, vendor.email].filter(Boolean).join(' · ')}
+            </p>
+          )}
+        </div>
+      )}
+
+      {(item.costPrice != null || item.rentalPrice != null) && (
+        <div className="mb-4 grid grid-cols-2 gap-4">
+          <Field label="Cost price / unit" value={item.costPrice != null ? formatCurrency(item.costPrice) : '—'} />
+          <Field label="Rental price / unit" value={item.rentalPrice != null ? formatCurrency(item.rentalPrice) : '—'} />
+          {grossProfit(item.costPrice, item.rentalPrice) != null && (
+            <Field label="Gross profit / unit" value={formatCurrency(grossProfit(item.costPrice, item.rentalPrice)!)} />
+          )}
+        </div>
+      )}
+
+      {item.notes && (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-surface p-4">
+          <p className="mb-1 text-sm text-gray-500">Internal notes</p>
+          <p className="whitespace-pre-wrap text-base text-charcoal">{item.notes}</p>
+        </div>
+      )}
 
       <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
         <p className="mb-3 text-base font-semibold text-charcoal">

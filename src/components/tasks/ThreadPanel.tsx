@@ -1,9 +1,10 @@
-import { useState, type KeyboardEvent, type MouseEvent } from 'react'
+import { useState, type MouseEvent } from 'react'
 import { useTaskMessages } from '../../hooks/useTaskMessages'
 import { MessageItem } from './MessageItem'
+import { MentionTextarea } from './MentionTextarea'
 import { Badge } from '../ui/Badge'
 import { formatRelativeTime } from '../../lib/datetime'
-import type { TaskThreadDoc } from '../../types'
+import type { Person, TaskThreadDoc } from '../../types'
 
 interface ThreadPanelProps {
   thread: TaskThreadDoc
@@ -13,6 +14,7 @@ interface ThreadPanelProps {
   unread: boolean
   isAdmin: boolean
   currentUid: string | undefined
+  mentionCandidates: Person[]
   onResolve: (threadId: string) => Promise<void>
   onReopen: (threadId: string) => Promise<void>
 }
@@ -25,6 +27,7 @@ export function ThreadPanel({
   unread,
   isAdmin,
   currentUid,
+  mentionCandidates,
   onResolve,
   onReopen,
 }: ThreadPanelProps) {
@@ -32,23 +35,18 @@ export function ThreadPanel({
     expanded ? thread.id : undefined,
   )
   const [draft, setDraft] = useState('')
+  const [mentionedIds, setMentionedIds] = useState<string[]>([])
   const [posting, setPosting] = useState(false)
 
   const handlePost = async () => {
     if (!draft.trim() || posting) return
     setPosting(true)
     try {
-      await postMessage(taskId, draft)
+      await postMessage(taskId, draft, mentionedIds)
       setDraft('')
+      setMentionedIds([])
     } finally {
       setPosting(false)
-    }
-  }
-
-  const handleKeyDown = (e: KeyboardEvent<HTMLTextAreaElement>) => {
-    if (e.key === 'Enter' && !e.shiftKey) {
-      e.preventDefault()
-      handlePost()
     }
   }
 
@@ -111,14 +109,17 @@ export function ThreadPanel({
           </div>
 
           <div className="flex gap-2 border-t border-gray-200 bg-surface p-3">
-            <textarea
+            <MentionTextarea
               value={draft}
-              onChange={(e) => setDraft(e.target.value)}
-              onKeyDown={handleKeyDown}
+              onChange={setDraft}
+              mentionedIds={mentionedIds}
+              onMentionedIdsChange={setMentionedIds}
+              people={mentionCandidates}
+              onSubmitShortcut={handlePost}
               maxLength={2000}
               rows={1}
-              placeholder="Write a reply…"
-              className="min-h-[44px] flex-1 rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-charcoal focus:border-regal focus:outline-none focus:ring-1 focus:ring-regal"
+              placeholder="Write a reply… (@ to mention someone)"
+              className="min-h-[44px] w-full rounded-md border border-gray-300 bg-white px-3 py-2 text-base text-charcoal focus:border-regal focus:outline-none focus:ring-1 focus:ring-regal"
             />
             <button
               type="button"
