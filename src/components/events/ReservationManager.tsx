@@ -134,7 +134,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
           <Select value={itemId} onChange={(e) => setItemId(e.target.value)}>
             {items.map((i) => (
               <option key={i.id} value={i.id}>
-                {i.name}
+                {i.name} — {availableForRental(i)} available
               </option>
             ))}
           </Select>

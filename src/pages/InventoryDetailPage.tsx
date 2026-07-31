@@ -7,7 +7,7 @@ import { Lightbox } from '../components/inventory/Lightbox'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
-import { attentionInfo } from '../lib/inventoryStatus'
+import { attentionInfo, availableForRental } from '../lib/inventoryStatus'
 import { formatDate, formatRelativeTime } from '../lib/datetime'
 import type { InventoryPhoto } from '../types'
 
@@ -146,9 +146,11 @@ export function InventoryDetailPage() {
       </div>
 
       <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
-        <p className="mb-3 text-base font-semibold text-charcoal">Status · {item.totalQuantity} total owned</p>
+        <p className="mb-3 text-base font-semibold text-charcoal">
+          Status · {availableForRental(item)} available for rental of {item.totalQuantity} total owned
+        </p>
         <div className="grid grid-cols-3 gap-2">
-          <StatusTile label="Good" value={item.statusBreakdown.good} tone="neutral" />
+          <StatusTile label="Good" value={availableForRental(item)} tone="neutral" />
           <StatusTile label="Needs Repair" value={item.statusBreakdown.needsRepair} tone="amber" />
           <StatusTile label="Needs Replacement" value={item.statusBreakdown.needsReplacement} tone="red" />
         </div>
