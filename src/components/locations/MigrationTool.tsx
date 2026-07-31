@@ -36,7 +36,13 @@ export function MigrationTool({ items, locations, createLocation }: MigrationToo
     setMapping((prev) => ({ ...prev, [value]: choice }))
   }
 
-  const newLocationCount = preview.distinctValues.filter(({ value }) => mapping[value]?.mode === 'new').length
+  // Distinct by trimmed lowercase name, matching runStorageEntriesMigration's own dedup — two raw
+  // values typed to the same new location name (the merge case) count as one location, not two.
+  const newLocationCount = new Set(
+    preview.distinctValues
+      .filter(({ value }) => mapping[value]?.mode === 'new')
+      .map(({ value }) => (mapping[value]?.newName ?? value).trim().toLowerCase()),
+  ).size
   const existingLocationCount = preview.distinctValues.filter(({ value }) => mapping[value]?.mode === 'existing').length
   const totalPendingItems =
     preview.distinctValues.reduce((sum, d) => sum + d.count, 0) + preview.vendorCount + preview.blankCount
@@ -59,7 +65,7 @@ export function MigrationTool({ items, locations, createLocation }: MigrationToo
     }
   }
 
-  if (totalPendingItems === 0) {
+  if (totalPendingItems === 0 && !result) {
     return (
       <div className="rounded-lg border border-gray-200 bg-white p-4">
         <p className="text-base text-gray-600">
@@ -113,8 +119,8 @@ export function MigrationTool({ items, locations, createLocation }: MigrationToo
                               value={choice.mode === 'existing' ? choice.locationId ?? '' : '__new__'}
                               onChange={(e) => {
                                 const v = e.target.value
-                                if (v === '__new__') setChoice(value, { mode: 'new', newName: value })
-                                else setChoice(value, { mode: 'existing', locationId: v })
+                                if (v === '__new__') setChoice(value, { ...choice, mode: 'new', newName: value })
+                                else setChoice(value, { ...choice, mode: 'existing', locationId: v })
                               }}
                               className="w-auto"
                             >
@@ -128,10 +134,16 @@ export function MigrationTool({ items, locations, createLocation }: MigrationToo
                             {choice.mode === 'new' && (
                               <Input
                                 value={choice.newName ?? ''}
-                                onChange={(e) => setChoice(value, { mode: 'new', newName: e.target.value })}
+                                onChange={(e) => setChoice(value, { ...choice, newName: e.target.value })}
                                 className="w-auto"
                               />
                             )}
+                            <Input
+                              value={choice.subLocationName ?? ''}
+                              onChange={(e) => setChoice(value, { ...choice, subLocationName: e.target.value })}
+                              placeholder="Sub-location (optional)"
+                              className="w-auto"
+                            />
                           </div>
                         </td>
                       </tr>

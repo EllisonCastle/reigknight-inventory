@@ -1,7 +1,7 @@
-import { doc, serverTimestamp, writeBatch } from 'firebase/firestore'
+import { doc, serverTimestamp, updateDoc, writeBatch } from 'firebase/firestore'
 import { db } from './firebase'
 import { getOrCreateVendorLocation } from './vendorLocation'
-import type { InventoryItem, LocationDoc } from '../types'
+import type { InventoryItem, LocationDoc, SubLocation } from '../types'
 
 const BATCH_SIZE = 400
 export const UNASSIGNED_LOCATION_NAME = 'Unassigned / Needs Sorting'
@@ -10,6 +10,8 @@ export interface LocationMappingChoice {
   mode: 'existing' | 'new'
   locationId?: string
   newName?: string
+  /** Optional — routes this raw value's items into a sub-location under the resolved location, matched by name (case-insensitive) or created if it doesn't exist yet. */
+  subLocationName?: string
 }
 
 export interface MigrationPreview {
@@ -68,15 +70,65 @@ export async function runStorageEntriesMigration(
 
   let newLocationsCreated = 0
 
+  // Two raw values set to "create new" with the same (trimmed, case-insensitive) name merge into
+  // one created location — e.g. "Wash Bay" and "Car Washbay" both typed as "Carriage House" end up
+  // pointed at the same new location, not two duplicates.
+  const newLocationCache = new Map<string, string>()
   const resolvedIds = new Map<string, string>()
   for (const [value, choice] of Object.entries(mapping)) {
     if (choice.mode === 'existing' && choice.locationId) {
       resolvedIds.set(value, choice.locationId)
     } else {
       const name = (choice.newName ?? value).trim() || value
-      const ref = await createLocation({ name, type: 'standard' })
-      resolvedIds.set(value, ref.id)
-      newLocationsCreated++
+      const cacheKey = name.toLowerCase()
+      const cachedId = newLocationCache.get(cacheKey)
+      if (cachedId) {
+        resolvedIds.set(value, cachedId)
+      } else {
+        const ref = await createLocation({ name, type: 'standard' })
+        newLocationCache.set(cacheKey, ref.id)
+        resolvedIds.set(value, ref.id)
+        newLocationsCreated++
+      }
+    }
+  }
+
+  // Sub-location resolution, per raw value that requested one. Matched by name (case-insensitive)
+  // against the resolved location's current sub-locations, or created if not found — cached so two
+  // raw values mapping to the same location + sub-location name (the merge case) resolve to the
+  // same sub-location instead of creating a duplicate.
+  const subLocationCache = new Map<string, string>() // `${locationId}::${nameLower}` -> subLocationId
+  const pendingNewSubs = new Map<string, SubLocation[]>() // locationId -> subs created during this run
+
+  async function resolveSubLocation(locationId: string, rawName: string): Promise<string> {
+    const name = rawName.trim()
+    const key = `${locationId}::${name.toLowerCase()}`
+    const cached = subLocationCache.get(key)
+    if (cached) return cached
+
+    const location = locations.find((l) => l.id === locationId)
+    const existing = location?.subLocations.find((s) => s.name.trim().toLowerCase() === name.toLowerCase())
+    if (existing) {
+      subLocationCache.set(key, existing.id)
+      return existing.id
+    }
+
+    const newSub: SubLocation = { id: crypto.randomUUID(), name }
+    const alreadyCreated = pendingNewSubs.get(locationId) ?? []
+    const nextSubs = [...(location?.subLocations ?? []), ...alreadyCreated, newSub]
+    await updateDoc(doc(db, 'locations', locationId), { subLocations: nextSubs, updatedAt: serverTimestamp() })
+    pendingNewSubs.set(locationId, [...alreadyCreated, newSub])
+    subLocationCache.set(key, newSub.id)
+    return newSub.id
+  }
+
+  const resolvedSubIds = new Map<string, string | null>()
+  for (const [value, choice] of Object.entries(mapping)) {
+    const locationId = resolvedIds.get(value)
+    if (locationId && choice.subLocationName?.trim()) {
+      resolvedSubIds.set(value, await resolveSubLocation(locationId, choice.subLocationName))
+    } else {
+      resolvedSubIds.set(value, null)
     }
   }
 
@@ -104,7 +156,8 @@ export async function runStorageEntriesMigration(
   const writes: { id: string; storageEntries: InventoryItem['storageEntries'] }[] = []
 
   for (const item of namedItems) {
-    const locationId = resolvedIds.get(item.location!.trim())
+    const rawValue = item.location!.trim()
+    const locationId = resolvedIds.get(rawValue)
     if (!locationId) continue
     writes.push({
       id: item.id,
@@ -112,7 +165,7 @@ export async function runStorageEntriesMigration(
         {
           id: crypto.randomUUID(),
           locationId,
-          subLocationId: null,
+          subLocationId: resolvedSubIds.get(rawValue) ?? null,
           bin: item.bin ?? '',
           quantity: item.totalQuantity ?? 0,
           packSize: null,
