@@ -17,7 +17,7 @@ import { QuickActionsMenu } from '../components/inventory/QuickActionsMenu'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
-import { attentionInfo } from '../lib/inventoryStatus'
+import { attentionInfo, availableForRental } from '../lib/inventoryStatus'
 import type { InventoryItem, InventoryPhoto } from '../types'
 
 function stripeClass(tone: 'amber' | 'red' | null): string {
@@ -136,6 +136,10 @@ export function InventoryPage() {
                       {item.category || '—'}
                       {item.location ? ` · ${item.location}` : ''}
                     </p>
+                    <p className="text-sm text-gray-500">
+                      {availableForRental(item)} available
+                      {availableForRental(item) !== item.totalQuantity ? ` of ${item.totalQuantity}` : ''}
+                    </p>
                     <div className="mt-1">
                       <AttentionBadge tone={attention.tone} label={attention.label} />
                     </div>
@@ -162,6 +166,7 @@ export function InventoryPage() {
                   <th className="px-4 py-2.5">Category</th>
                   <th className="px-4 py-2.5">Location</th>
                   <th className="px-4 py-2.5">Qty owned</th>
+                  <th className="px-4 py-2.5">Available</th>
                   <th className="px-4 py-2.5">Status</th>
                   <th className="px-4 py-2.5" />
                 </tr>
@@ -192,6 +197,7 @@ export function InventoryPage() {
                         {item.bin ? ` · ${item.bin}` : ''}
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{item.totalQuantity}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{availableForRental(item)}</td>
                       <td className="px-4 py-2.5">
                         {attention.label ? (
                           <AttentionBadge tone={attention.tone} label={attention.label} />

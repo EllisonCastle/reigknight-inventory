@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from 'react'
 import { useAuth } from './useAuth'
 import { usePeople } from './usePeople'
+import { syncUserRole } from '../lib/syncUserRole'
 import type { Person } from '../types'
 
 /**
@@ -9,6 +10,16 @@ import type { Person } from '../types'
  * finally auto-provisioning a new "staff" record if neither matches. Waits for
  * the live people snapshot to reflect the write rather than constructing an
  * optimistic Person, so callers always see real Firestore data (e.g. role).
+ *
+ * Every time a match is found, the users/{authUid} mirror doc that Firestore
+ * rules read (myPersonId()) is re-synced to it. That mirror is otherwise only
+ * written from createPerson/updatePerson/the one-time role migration, so it
+ * can silently drift from what the client resolves here — e.g. duplicate
+ * people records for the same email. A drifted mirror makes the rules'
+ * `myPersonId() in assigneeIds` check fail even though the UI thinks the user
+ * is an assignee, which shows up as a task checkbox that ticks and then
+ * reverts (the write gets rejected, Firestore's optimistic cache rolls back).
+ * Re-syncing on every resolve keeps the two in agreement by construction.
  */
 export function useCurrentPerson() {
   const { user } = useAuth()
@@ -25,6 +36,7 @@ export function useCurrentPerson() {
     if (byAuthUid) {
       setPerson(byAuthUid)
       setLoading(false)
+      syncUserRole(user.uid, byAuthUid.role, byAuthUid.id)
       return
     }
 

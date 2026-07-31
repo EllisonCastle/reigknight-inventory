@@ -34,6 +34,8 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
   const [typeFilter, setTypeFilter] = useState('')
   const [statusFilter, setStatusFilter] = useState('')
   const [assigneeFilter, setAssigneeFilter] = useState('')
+  const [showCompleted, setShowCompleted] = useState(false)
+  const [toggleError, setToggleError] = useState('')
 
   const peopleById = useMemo(() => new Map(people.map((p) => [p.id, p])), [people])
 
@@ -48,6 +50,8 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
     if (assigneeFilter && !t.assigneeIds.includes(assigneeFilter)) return false
     return true
   })
+  const activeTasks = filtered.filter((t) => t.status !== 'done')
+  const completedTasks = filtered.filter((t) => t.status === 'done')
 
   const openCreate = () => {
     setEditing(undefined)
@@ -73,8 +77,13 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
     await deleteTask(task.id)
   }
 
-  const toggleDone = (task: TaskDoc) => {
-    setTaskStatus(task.id, task.status === 'done' ? 'todo' : 'done')
+  const toggleDone = async (task: TaskDoc) => {
+    setToggleError('')
+    try {
+      await setTaskStatus(task.id, task.status === 'done' ? 'todo' : 'done')
+    } catch (err) {
+      setToggleError(err instanceof Error ? err.message : `Couldn't update "${task.title}" — try again.`)
+    }
   }
 
   return (
@@ -94,6 +103,7 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
       </div>
 
       <ErrorNotice message={error} />
+      <ErrorNotice message={toggleError} />
 
       <div className="mb-4 grid grid-cols-1 gap-3 sm:grid-cols-3">
         <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
@@ -127,73 +137,139 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
       ) : filtered.length === 0 ? (
         <p className="text-base text-gray-500">No tasks match.</p>
       ) : (
-        <div className="flex flex-col gap-2">
-          {filtered.map((task) => (
-            <div
-              key={task.id}
-              className="flex flex-col gap-2 rounded-lg border border-gray-200 p-3 sm:flex-row sm:items-center sm:justify-between"
-            >
-              <div className="flex items-start gap-3">
-                <input
-                  type="checkbox"
-                  checked={task.status === 'done'}
-                  onChange={() => toggleDone(task)}
-                  disabled={!canEditTaskStatus(task.assigneeIds)}
-                  title={canEditTaskStatus(task.assigneeIds) ? undefined : 'Only assigned team members can update this'}
-                  className="mt-1 h-5 w-5 shrink-0 disabled:opacity-40"
-                  aria-label={`Mark "${task.title}" ${task.status === 'done' ? 'not done' : 'done'}`}
+        <div className="flex flex-col gap-4">
+          {activeTasks.length === 0 ? (
+            <p className="text-base text-gray-500">No active tasks.</p>
+          ) : (
+            <div className="flex flex-col gap-2">
+              {activeTasks.map((task) => (
+                <TaskRow
+                  key={task.id}
+                  task={task}
+                  peopleById={peopleById}
+                  unreadCount={unreadByTask.get(task.id) ?? 0}
+                  canEdit={canEditTaskStatus(task.assigneeIds)}
+                  isAdmin={isAdmin}
+                  onToggleDone={() => toggleDone(task)}
+                  onEdit={() => openEdit(task)}
+                  onDelete={() => handleDelete(task)}
                 />
-                <div>
-                  <div className="flex items-center gap-1.5">
-                    <Link
-                      to={`/tasks/${task.id}`}
-                      className={`text-base font-medium hover:underline ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-charcoal'}`}
-                    >
-                      {task.title}
-                    </Link>
-                    {(unreadByTask.get(task.id) ?? 0) > 0 && (
-                      <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-sm font-medium text-white">
-                        {unreadByTask.get(task.id)}
-                      </span>
-                    )}
-                  </div>
-                  <p className="text-sm text-gray-500">
-                    {TASK_TYPE_LABELS[task.taskType]}
-                    {task.assigneeIds.length > 0
-                      ? ` · ${task.assigneeIds.map((id) => peopleById.get(id)?.fullName ?? 'Unknown').join(', ')}`
-                      : ' · Unassigned'}
-                    {' · Due '}
-                    {formatDate(task.dueDate)}
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-center gap-2 pl-8 sm:pl-0">
-                {task.status !== 'done' && <Badge tone={statusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>}
-                <button
-                  onClick={() => openEdit(task)}
-                  disabled={!isAdmin}
-                  title={isAdmin ? undefined : 'Admin only'}
-                  className="min-h-[44px] px-2 text-base font-medium text-regal hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
-                >
-                  Edit
-                </button>
-                <button
-                  onClick={() => handleDelete(task)}
-                  disabled={!isAdmin}
-                  title={isAdmin ? undefined : 'Admin only'}
-                  className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
-                >
-                  Delete
-                </button>
-              </div>
+              ))}
             </div>
-          ))}
+          )}
+
+          {completedTasks.length > 0 && (
+            <div>
+              <button
+                type="button"
+                onClick={() => setShowCompleted((v) => !v)}
+                className="min-h-[44px] text-base font-medium text-gray-500 hover:text-charcoal"
+              >
+                {showCompleted ? '▾' : '▸'} Completed ({completedTasks.length})
+              </button>
+              {showCompleted && (
+                <div className="mt-2 flex flex-col gap-2">
+                  {completedTasks.map((task) => (
+                    <TaskRow
+                      key={task.id}
+                      task={task}
+                      peopleById={peopleById}
+                      unreadCount={unreadByTask.get(task.id) ?? 0}
+                      canEdit={canEditTaskStatus(task.assigneeIds)}
+                      isAdmin={isAdmin}
+                      onToggleDone={() => toggleDone(task)}
+                      onEdit={() => openEdit(task)}
+                      onDelete={() => handleDelete(task)}
+                    />
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
         </div>
       )}
 
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit task' : 'Add task'} wide>
         <TaskForm initial={editing} people={people} onCancel={() => setModalOpen(false)} onSubmit={handleSubmit} />
       </Modal>
+    </div>
+  )
+}
+
+function TaskRow({
+  task,
+  peopleById,
+  unreadCount,
+  canEdit,
+  isAdmin,
+  onToggleDone,
+  onEdit,
+  onDelete,
+}: {
+  task: TaskDoc
+  peopleById: Map<string, Person>
+  unreadCount: number
+  canEdit: boolean
+  isAdmin: boolean
+  onToggleDone: () => void
+  onEdit: () => void
+  onDelete: () => void
+}) {
+  return (
+    <div className="flex flex-col gap-2 rounded-lg border border-gray-200 p-3 sm:flex-row sm:items-center sm:justify-between">
+      <div className="flex items-start gap-3">
+        <input
+          type="checkbox"
+          checked={task.status === 'done'}
+          onChange={onToggleDone}
+          disabled={!canEdit}
+          title={canEdit ? undefined : 'Only assigned team members can update this'}
+          className="mt-1 h-5 w-5 shrink-0 disabled:opacity-40"
+          aria-label={`Mark "${task.title}" ${task.status === 'done' ? 'not done' : 'done'}`}
+        />
+        <div>
+          <div className="flex items-center gap-1.5">
+            <Link
+              to={`/tasks/${task.id}`}
+              className={`text-base font-medium hover:underline ${task.status === 'done' ? 'text-gray-400 line-through' : 'text-charcoal'}`}
+            >
+              {task.title}
+            </Link>
+            {unreadCount > 0 && (
+              <span className="flex h-5 min-w-[20px] shrink-0 items-center justify-center rounded-full bg-red-600 px-1 text-sm font-medium text-white">
+                {unreadCount}
+              </span>
+            )}
+          </div>
+          <p className="text-sm text-gray-500">
+            {TASK_TYPE_LABELS[task.taskType]}
+            {task.assigneeIds.length > 0
+              ? ` · ${task.assigneeIds.map((id) => peopleById.get(id)?.fullName ?? 'Unknown').join(', ')}`
+              : ' · Unassigned'}
+            {' · Due '}
+            {formatDate(task.dueDate)}
+          </p>
+        </div>
+      </div>
+      <div className="flex items-center gap-2 pl-8 sm:pl-0">
+        {task.status !== 'done' && <Badge tone={statusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>}
+        <button
+          onClick={onEdit}
+          disabled={!isAdmin}
+          title={isAdmin ? undefined : 'Admin only'}
+          className="min-h-[44px] px-2 text-base font-medium text-regal hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+        >
+          Edit
+        </button>
+        <button
+          onClick={onDelete}
+          disabled={!isAdmin}
+          title={isAdmin ? undefined : 'Admin only'}
+          className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline disabled:cursor-not-allowed disabled:text-gray-400 disabled:no-underline"
+        >
+          Delete
+        </button>
+      </div>
     </div>
   )
 }
