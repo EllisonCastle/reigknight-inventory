@@ -8,6 +8,7 @@ import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { Badge } from '../components/ui/Badge'
 import { attentionInfo, availableForRental, getItemTotalQuantity } from '../lib/inventoryStatus'
+import { getComponents, getEffectiveAvailability, getStockType } from '../lib/kits'
 import { formatDate, formatRelativeTime } from '../lib/datetime'
 import { formatCurrency, grossProfit } from '../lib/currency'
 import { useVendors } from '../hooks/useVendors'
@@ -44,6 +45,7 @@ export function InventoryDetailPage() {
 
   const { locations } = useLocations()
   const locationsById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
+  const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
 
   const item = items.find((i) => i.id === itemId)
   const vendor = item?.vendorId ? vendors.find((v) => v.id === item.vendorId) : undefined
@@ -122,6 +124,7 @@ export function InventoryDetailPage() {
       <div className="mb-3 mt-2 flex flex-wrap items-center gap-2">
         {attention.tone && attention.label && <Badge tone={attention.tone}>{attention.label}</Badge>}
         {item.category && <Badge>{item.category}</Badge>}
+        {getStockType(item) === 'bundle' && <Badge tone="regal">Bundle</Badge>}
       </div>
       {item.description && <p className="mb-4 whitespace-pre-wrap text-base text-gray-600">{item.description}</p>}
 
@@ -213,16 +216,54 @@ export function InventoryDetailPage() {
         </div>
       )}
 
-      <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
-        <p className="mb-3 text-base font-semibold text-charcoal">
-          Status · {availableForRental(item)} available for rental of {getItemTotalQuantity(item)} total owned
-        </p>
-        <div className="grid grid-cols-3 gap-2">
-          <StatusTile label="Good" value={availableForRental(item)} tone="neutral" />
-          <StatusTile label="Needs Repair" value={item.statusBreakdown.needsRepair} tone="amber" />
-          <StatusTile label="Needs Replacement" value={item.statusBreakdown.needsReplacement} tone="red" />
+      {getStockType(item) === 'bundle' ? (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+          <p className="text-base font-semibold text-charcoal">
+            Status · {getEffectiveAvailability(item, itemsById)} available to assemble right now
+          </p>
+          <p className="mt-1 text-sm text-gray-500">
+            This is a virtual bundle — it has no physical stock of its own; availability is the most units its
+            components could currently support.
+          </p>
         </div>
-      </div>
+      ) : (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+          <p className="mb-3 text-base font-semibold text-charcoal">
+            Status · {availableForRental(item)} available for rental of {getItemTotalQuantity(item)} total owned
+          </p>
+          <div className="grid grid-cols-3 gap-2">
+            <StatusTile label="Good" value={availableForRental(item)} tone="neutral" />
+            <StatusTile label="Needs Repair" value={item.statusBreakdown.needsRepair} tone="amber" />
+            <StatusTile label="Needs Replacement" value={item.statusBreakdown.needsReplacement} tone="red" />
+          </div>
+        </div>
+      )}
+
+      {getComponents(item).length > 0 && (
+        <div className="mb-4 rounded-lg border border-gray-200 bg-white p-4">
+          <p className="mb-2 text-base font-semibold text-charcoal">Components</p>
+          <div className="flex flex-col gap-1.5">
+            {getComponents(item).map((c, i) => {
+              const child = itemsById.get(c.childItemId)
+              return (
+                <div key={i} className="flex items-center justify-between text-base text-charcoal">
+                  {child ? (
+                    <Link to={`/inventory/${child.id}`} className="hover:underline">
+                      {child.name}
+                    </Link>
+                  ) : (
+                    <span className="text-gray-400">(deleted item)</span>
+                  )}
+                  <span className="text-sm text-gray-500">
+                    {c.quantityPerUnit} per unit
+                    {child ? ` · ${getEffectiveAvailability(child, itemsById)} available` : ''}
+                  </span>
+                </div>
+              )
+            })}
+          </div>
+        </div>
+      )}
 
       <p className="mb-6 text-sm text-gray-500">
         Created {formatDate(item.createdAt)} · Last updated {formatRelativeTime(item.updatedAt)}
@@ -240,6 +281,7 @@ export function InventoryDetailPage() {
       <Modal open={editOpen} onClose={() => setEditOpen(false)} title="Edit item" wide>
         <InventoryForm
           initial={item}
+          items={items}
           onCancel={() => setEditOpen(false)}
           onCreate={async () => item.id}
           onUpdate={handleUpdate}

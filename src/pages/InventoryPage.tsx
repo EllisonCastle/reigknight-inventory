@@ -19,7 +19,8 @@ import { runBatchMove } from '../lib/batchMove'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
-import { attentionInfo, availableForRental, getItemTotalQuantity } from '../lib/inventoryStatus'
+import { attentionInfo, getItemTotalQuantity } from '../lib/inventoryStatus'
+import { getEffectiveAvailability } from '../lib/kits'
 import { useLocations } from '../hooks/useLocations'
 import type { InventoryItem, InventoryPhoto, LocationDoc } from '../types'
 
@@ -60,6 +61,7 @@ export function InventoryPage() {
   const { isAdminOrStaff } = usePermissions()
   const { locations } = useLocations()
   const locationsById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
+  const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
   const [filters, setFilters] = useState<InventoryFilterState>(emptyInventoryFilters)
   const [sort, setSort] = useState<InventorySortKey>('updatedAt')
   const [modalOpen, setModalOpen] = useState(false)
@@ -232,8 +234,8 @@ export function InventoryPage() {
                       {locationSummary(item, locationsById) ? ` · ${locationSummary(item, locationsById)}` : ''}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {availableForRental(item)} available
-                      {availableForRental(item) !== getItemTotalQuantity(item) ? ` of ${getItemTotalQuantity(item)}` : ''}
+                      {getEffectiveAvailability(item, itemsById)} available
+                      {getEffectiveAvailability(item, itemsById) !== getItemTotalQuantity(item) ? ` of ${getItemTotalQuantity(item)}` : ''}
                     </p>
                     <div className="mt-1">
                       <AttentionBadge tone={attention.tone} label={attention.label} />
@@ -301,7 +303,7 @@ export function InventoryPage() {
                       <td className="px-4 py-2.5 text-gray-600">{item.category || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600">{locationSummary(item, locationsById) || '—'}</td>
                       <td className="px-4 py-2.5 text-gray-600">{getItemTotalQuantity(item)}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{availableForRental(item)}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{getEffectiveAvailability(item, itemsById)}</td>
                       <td className="px-4 py-2.5">
                         {attention.label ? (
                           <AttentionBadge tone={attention.tone} label={attention.label} />
@@ -345,6 +347,7 @@ export function InventoryPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit item' : 'Add item'} wide>
         <InventoryForm
           initial={editing}
+          items={items}
           onCancel={() => setModalOpen(false)}
           onCreate={handleCreate}
           onUpdate={handleUpdate}

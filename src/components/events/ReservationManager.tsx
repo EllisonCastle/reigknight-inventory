@@ -1,8 +1,9 @@
-import { useState, type FormEvent } from 'react'
+import { Fragment, useState, type FormEvent } from 'react'
 import { useReservationsForEvent } from '../../hooks/useReservations'
 import { checkInventoryAvailability, type InventoryAvailability } from '../../lib/availability'
 import { availableForRental, getItemTotalQuantity } from '../../lib/inventoryStatus'
 import { getBinRoundingPackSize, getCommittedQuantity, getInvoicedQuantity, suggestCommittedQuantity } from '../../lib/reservationQuantity'
+import { getComponents, getEffectiveAvailability, getStockType } from '../../lib/kits'
 import { localInputToTimestamp, timestampToLocalInput, formatTimestamp } from '../../lib/datetime'
 import { Button } from '../ui/Button'
 import { FormRow, Input, Select } from '../ui/Field'
@@ -15,6 +16,12 @@ import type { EventDoc, InventoryItem, Reservation } from '../../types'
 interface ReservationManagerProps {
   event: EventDoc
   items: InventoryItem[]
+}
+
+interface ComponentShortfall {
+  child: InventoryItem
+  needed: number
+  availability: InventoryAvailability
 }
 
 export function ReservationManager({ event, items }: ReservationManagerProps) {
@@ -37,9 +44,22 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [conflict, setConflict] = useState<InventoryAvailability | null>(null)
+  const [componentShortfalls, setComponentShortfalls] = useState<ComponentShortfall[]>([])
 
   const itemById = new Map(items.map((i) => [i.id, i]))
   const selectedItem = itemById.get(itemId)
+
+  // Auto-generated child-component reservations (see below) are hidden from the main table and
+  // shown nested under their parent instead — the admin manages the kit as one line.
+  const topLevelReservations = reservations.filter((r) => !r.parentReservationId)
+  const childrenByParentId = new Map<string, Reservation[]>()
+  for (const r of reservations) {
+    if (r.parentReservationId) {
+      const list = childrenByParentId.get(r.parentReservationId) ?? []
+      list.push(r)
+      childrenByParentId.set(r.parentReservationId, list)
+    }
+  }
 
   const handleItemChange = (nextId: string) => {
     setItemId(nextId)
@@ -67,11 +87,13 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
   const spare = committedNum - invoicedNum
   const packSize = selectedItem ? getBinRoundingPackSize(selectedItem) : null
   const bins = packSize ? Math.ceil(committedNum / packSize) : null
+  const selectedComponents = selectedItem ? getComponents(selectedItem) : []
 
   const handleAdd = async (e: FormEvent) => {
     e.preventDefault()
     setError('')
     setConflict(null)
+    setComponentShortfalls([])
 
     const item = itemById.get(itemId)
     if (!item) {
@@ -100,22 +122,71 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
 
     setSaving(true)
     try {
-      const ceiling = availableForRental(item)
-      const availability = await checkInventoryAvailability(itemId, getItemTotalQuantity(item), ceiling, fromTs, toTs, committedNum)
-      if (!availability.isAvailable) {
-        setConflict(availability)
+      // Bundles are virtual — they have no capacity of their own to check or block; only their
+      // components can actually run short. Stocked items (with or without components) still
+      // check their own capacity exactly as before Checkpoint 4.
+      const isBundle = getStockType(item) === 'bundle'
+      let parentCommitted = committedNum
+
+      if (!isBundle) {
+        const ceiling = availableForRental(item)
+        const availability = await checkInventoryAvailability(itemId, getItemTotalQuantity(item), ceiling, fromTs, toTs, committedNum)
+        if (!availability.isAvailable) {
+          setConflict(availability)
+          return
+        }
+      } else {
+        parentCommitted = 0
+      }
+
+      const shortfalls: ComponentShortfall[] = []
+      const componentNeeds: { child: InventoryItem; needed: number }[] = []
+      for (const c of getComponents(item)) {
+        const child = itemById.get(c.childItemId)
+        if (!child) continue
+        const needed = c.quantityPerUnit * committedNum
+        if (needed <= 0) continue
+        const childCeiling = availableForRental(child)
+        const availability = await checkInventoryAvailability(child.id, getItemTotalQuantity(child), childCeiling, fromTs, toTs, needed)
+        if (!availability.isAvailable) {
+          shortfalls.push({ child, needed, availability })
+        } else {
+          componentNeeds.push({ child, needed })
+        }
+      }
+
+      if (shortfalls.length > 0) {
+        setComponentShortfalls(shortfalls)
         return
       }
-      await createReservation({
+
+      const parentRef = await createReservation({
         eventId: event.id,
         itemId,
         quantityInvoiced: invoicedNum,
-        quantityCommitted: committedNum,
+        quantityCommitted: parentCommitted,
         reservedFrom: fromTs,
         reservedTo: toTs,
         eventStatus: event.status,
         dropOffLocation: dropOffLocation.trim(),
       })
+
+      // Auto-generated child reservations: not billed separately (the parent's invoice covers
+      // the kit), but committed so they block the same components' availability for this window.
+      for (const { child, needed } of componentNeeds) {
+        await createReservation({
+          eventId: event.id,
+          itemId: child.id,
+          quantityInvoiced: 0,
+          quantityCommitted: needed,
+          reservedFrom: fromTs,
+          reservedTo: toTs,
+          eventStatus: event.status,
+          dropOffLocation: dropOffLocation.trim(),
+          parentReservationId: parentRef.id,
+        })
+      }
+
       setQuantityInvoiced('1')
       setQuantityCommitted('1')
       setCommittedTouched(false)
@@ -129,6 +200,10 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
 
   const handleRemove = async (id: string) => {
     if (!confirm('Remove this inventory assignment?')) return
+    const children = childrenByParentId.get(id) ?? []
+    for (const child of children) {
+      await deleteReservation(child.id)
+    }
     await deleteReservation(id)
   }
 
@@ -166,7 +241,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
 
       {loading ? (
         <p className="text-base text-gray-500">Loading…</p>
-      ) : reservations.length === 0 ? (
+      ) : topLevelReservations.length === 0 ? (
         <p className="mb-4 text-base text-gray-500">Nothing assigned yet.</p>
       ) : (
         <div className="mb-4 overflow-x-auto">
@@ -183,30 +258,57 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {reservations.map((r) => (
-                <tr key={r.id}>
-                  <td className="py-1.5 font-medium text-charcoal">{itemById.get(r.itemId)?.name ?? '(deleted item)'}</td>
-                  <td className="py-1.5 text-gray-600">
-                    <QuantityCell value={getInvoicedQuantity(r)} onSave={(next) => handleSaveInvoiced(r, next)} />
-                  </td>
-                  <td className="py-1.5 text-gray-600">
-                    <QuantityCell value={getCommittedQuantity(r)} onSave={(next) => handleSaveCommitted(r, next)} />
-                  </td>
-                  <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedFrom)}</td>
-                  <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedTo)}</td>
-                  <td className="py-1.5">
-                    <DropOffCell value={r.dropOffLocation ?? ''} onSave={(next) => updateReservation(r.id, { dropOffLocation: next })} />
-                  </td>
-                  <td className="py-1.5 text-right">
-                    <button
-                      onClick={() => handleRemove(r.id)}
-                      className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
-                    >
-                      Remove
-                    </button>
-                  </td>
-                </tr>
-              ))}
+              {topLevelReservations.map((r) => {
+                const children = childrenByParentId.get(r.id) ?? []
+                return (
+                  <Fragment key={r.id}>
+                    <tr>
+                      <td className="py-1.5 font-medium text-charcoal">{itemById.get(r.itemId)?.name ?? '(deleted item)'}</td>
+                      <td className="py-1.5 text-gray-600">
+                        <QuantityCell value={getInvoicedQuantity(r)} onSave={(next) => handleSaveInvoiced(r, next)} />
+                      </td>
+                      <td className="py-1.5 text-gray-600">
+                        {children.length > 0 ? (
+                          <span
+                            className="inline-block px-1.5 text-sm text-gray-500"
+                            title="Kit reservation — remove and re-add to change quantity"
+                          >
+                            {getCommittedQuantity(r)}
+                          </span>
+                        ) : (
+                          <QuantityCell value={getCommittedQuantity(r)} onSave={(next) => handleSaveCommitted(r, next)} />
+                        )}
+                      </td>
+                      <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedFrom)}</td>
+                      <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedTo)}</td>
+                      <td className="py-1.5">
+                        <DropOffCell
+                          value={r.dropOffLocation ?? ''}
+                          onSave={(next) => updateReservation(r.id, { dropOffLocation: next })}
+                        />
+                      </td>
+                      <td className="py-1.5 text-right">
+                        <button
+                          onClick={() => handleRemove(r.id)}
+                          className="min-h-[44px] px-2 text-base font-medium text-red-600 hover:underline"
+                        >
+                          Remove
+                        </button>
+                      </td>
+                    </tr>
+                    {children.map((child) => (
+                      <tr key={child.id} className="bg-surface">
+                        <td className="py-1 pl-4 text-sm text-gray-500">
+                          ↳ {itemById.get(child.itemId)?.name ?? '(deleted item)'} (component)
+                        </td>
+                        <td className="py-1 text-sm text-gray-400">—</td>
+                        <td className="py-1 text-sm text-gray-500">{getCommittedQuantity(child)}</td>
+                        <td className="py-1" colSpan={4} />
+                      </tr>
+                    ))}
+                  </Fragment>
+                )
+              })}
             </tbody>
           </table>
         </div>
@@ -217,7 +319,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
           <Select value={itemId} onChange={(e) => handleItemChange(e.target.value)}>
             {items.map((i) => (
               <option key={i.id} value={i.id}>
-                {i.name} — {availableForRental(i)} available
+                {i.name} — {getEffectiveAvailability(i, itemById)} available
               </option>
             ))}
           </Select>
@@ -261,6 +363,17 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
               {spare !== 0 ? ` · ${Math.max(spare, 0)} spare` : ''}
             </p>
           )}
+          {selectedComponents.length > 0 && (
+            <p className="text-sm text-gray-500">
+              Pulls: {selectedComponents
+                .map((c) => {
+                  const child = itemById.get(c.childItemId)
+                  return child ? `${c.quantityPerUnit * committedNum} ${child.name}` : null
+                })
+                .filter(Boolean)
+                .join(' · ')}
+            </p>
+          )}
         </div>
 
         <div className="sm:col-span-2 md:col-span-4">
@@ -271,6 +384,18 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
               requestedQty={conflict.requestedQty}
               totalQuantity={conflict.totalQuantity}
             />
+          )}
+          {componentShortfalls.length > 0 && (
+            <div className="rounded-md border border-red-200 bg-red-50 p-3 text-base text-red-800">
+              <p className="font-medium">Not enough components available for that window:</p>
+              <ul className="mt-1 list-disc pl-5">
+                {componentShortfalls.map((s) => (
+                  <li key={s.child.id}>
+                    {s.child.name} — need {s.needed}, only {Math.max(s.availability.available, 0)} available
+                  </li>
+                ))}
+              </ul>
+            </div>
           )}
           {error && <p className="text-base text-red-600">{error}</p>}
         </div>

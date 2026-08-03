@@ -40,6 +40,10 @@ function explodeReservation(
   // Pull list quantity is the committed amount — what's actually blocked/set aside for the
   // event, including any bin-rounded spare — not the invoiced amount the customer is billed for.
   const committedQty = getCommittedQuantity(reservation)
+  // A kit's own parent-level reservation commits 0 when the kit is a virtual bundle (Checkpoint
+  // 4) — nothing physical to pull for the kit itself, its auto-generated child reservations
+  // (real documents, itemId = each component) already explode into their own lines below.
+  if (committedQty <= 0) return []
 
   const item = itemsById.get(reservation.itemId)
   if (!item) {

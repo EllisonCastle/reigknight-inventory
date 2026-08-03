@@ -6,13 +6,15 @@ import { TagInput } from './TagInput'
 import { ItemPresetPicker } from './ItemPresetPicker'
 import { StatusPanel } from './StatusPanel'
 import { StorageEntriesEditor } from './StorageEntriesEditor'
+import { ComponentsEditor } from './ComponentsEditor'
 import { CATEGORIES, COLORS, CONDITIONS, MATERIALS } from '../../constants/inventory'
 import { getItemTotalQuantity, rebalanceForNewTotal, reduceStorageEntriesBy, validateStatusCounts } from '../../lib/inventoryStatus'
+import { getComponents, getStockType } from '../../lib/kits'
 import { useVendors } from '../../hooks/useVendors'
 import { getOrCreateVendorLocation } from '../../lib/vendorLocation'
 import { formatCurrency } from '../../lib/currency'
 import { THROUGH_VENDOR_LOCATION_ID } from '../../types'
-import type { InventoryItem, InventoryPhoto, StatusBreakdown, StorageEntry } from '../../types'
+import type { InventoryItem, InventoryPhoto, KitComponent, StatusBreakdown, StorageEntry } from '../../types'
 import type { ItemPreset } from '../../constants/itemPresets'
 
 export interface InventoryFormFields {
@@ -32,10 +34,14 @@ export interface InventoryFormFields {
   costPrice: number | null
   rentalPrice: number | null
   vendorId: string
+  stockType: 'stocked' | 'bundle'
+  components: KitComponent[]
 }
 
 interface InventoryFormProps {
   initial?: InventoryItem
+  /** Full item list — used for the kit components picker (and to exclude the item itself from it). */
+  items: InventoryItem[]
   /** Pre-fills one storage entry when opening the form from a location's "Add item here" — create mode only. */
   initialStorageEntry?: { locationId: string; subLocationId?: string | null }
   onCancel: () => void
@@ -64,10 +70,13 @@ const blankDraftFields: InventoryFormFields = {
   costPrice: null,
   rentalPrice: null,
   vendorId: '',
+  stockType: 'stocked',
+  components: [],
 }
 
 export function InventoryForm({
   initial,
+  items,
   initialStorageEntry,
   onCancel,
   onCreate,
@@ -83,6 +92,8 @@ export function InventoryForm({
   const [colorCustom, setColorCustom] = useState(initial?.colorCustom ?? '')
   const [tags, setTags] = useState<string[]>(initial?.tags ?? [])
   const [vendorId, setVendorId] = useState(initial?.vendorId ?? '')
+  const [stockType, setStockType] = useState<'stocked' | 'bundle'>(initial ? getStockType(initial) : 'stocked')
+  const [components, setComponents] = useState<KitComponent[]>(initial ? getComponents(initial) : [])
   const { vendors } = useVendors()
 
   const initialNonVendorEntries = (initial?.storageEntries ?? []).filter((e) => e.locationId !== THROUGH_VENDOR_LOCATION_ID)
@@ -243,13 +254,16 @@ export function InventoryForm({
     costPrice: costPrice.trim() === '' ? null : Number(costPrice),
     rentalPrice: rentalPrice.trim() === '' ? null : Number(rentalPrice),
     vendorId,
+    stockType,
+    components: components.filter((c) => c.childItemId),
   })
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
     if (!name.trim()) return setError('Name is required.')
     if (!category) return setError('Category is required.')
-    if (!vendorId && !storageEntries.some((entry) => entry.locationId)) {
+    // Bundles are virtual — no physical stock, so no storage location to require.
+    if (stockType !== 'bundle' && !vendorId && !storageEntries.some((entry) => entry.locationId)) {
       return setError('Add at least one storage location (or select a vendor for a vendor-sourced item).')
     }
 
@@ -343,16 +357,28 @@ export function InventoryForm({
         <TagInput value={tags} onChange={setTags} />
       </FormRow>
 
-      <FormRow label="Vendor (optional — for items sourced through a vendor rather than owned stock)">
-        <Select value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
-          <option value="">None (owned stock)</option>
-          {vendors.map((v) => (
-            <option key={v.id} value={v.id}>
-              {v.name}
-            </option>
-          ))}
+      <FormRow label="Stock type">
+        <Select
+          value={stockType}
+          onChange={(e) => setStockType(e.target.value as 'stocked' | 'bundle')}
+        >
+          <option value="stocked">Stocked — has its own physical inventory</option>
+          <option value="bundle">Bundle — virtual, availability comes entirely from its components</option>
         </Select>
       </FormRow>
+
+      {stockType !== 'bundle' && (
+        <FormRow label="Vendor (optional — for items sourced through a vendor rather than owned stock)">
+          <Select value={vendorId} onChange={(e) => setVendorId(e.target.value)}>
+            <option value="">None (owned stock)</option>
+            {vendors.map((v) => (
+              <option key={v.id} value={v.id}>
+                {v.name}
+              </option>
+            ))}
+          </Select>
+        </FormRow>
+      )}
 
       {hasLegacyLocation && (
         <p className="rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-800">
@@ -363,7 +389,12 @@ export function InventoryForm({
         </p>
       )}
 
-      {vendorId ? (
+      {stockType === 'bundle' ? (
+        <p className="rounded-md border border-gray-200 bg-surface px-3 py-2 text-sm text-gray-600">
+          This is a virtual bundle — it has no storage location of its own. Its availability comes entirely from the
+          components below.
+        </p>
+      ) : vendorId ? (
         <FormRow label="Quantity (through this vendor)">
           <Input
             type="number"
@@ -376,6 +407,8 @@ export function InventoryForm({
       ) : (
         <StorageEntriesEditor entries={storageEntries} onChange={setStorageEntries} namePrefixDefault={name} />
       )}
+
+      <ComponentsEditor items={items} excludeItemId={initial?.id} components={components} onChange={setComponents} />
 
       <FormRow label="Condition">
         <Select value={condition} onChange={(e) => setCondition(e.target.value)}>

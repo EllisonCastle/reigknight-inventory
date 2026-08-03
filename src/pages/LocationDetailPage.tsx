@@ -175,6 +175,7 @@ export function LocationDetailPage() {
         )}
         <InventoryForm
           key={formKey}
+          items={items}
           initialStorageEntry={{ locationId: location.id, subLocationId: addSubLocationId }}
           onCancel={closeAdd}
           onCreate={handleCreate}
