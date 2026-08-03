@@ -16,6 +16,8 @@ import { PeoplePage } from './pages/PeoplePage'
 import { MyTasksPage } from './pages/MyTasksPage'
 import { PublicEventPage } from './pages/PublicEventPage'
 import { VendorsPage } from './pages/VendorsPage'
+import { LocationsPage } from './pages/LocationsPage'
+import { LocationDetailPage } from './pages/LocationDetailPage'
 
 function Protected({ children }: { children: ReactNode }) {
   return (
@@ -51,6 +53,8 @@ export default function App() {
           />
           <Route path="/my-tasks" element={<Protected><MyTasksPage /></Protected>} />
           <Route path="/vendors" element={<Protected><VendorsPage /></Protected>} />
+          <Route path="/locations" element={<Protected><LocationsPage /></Protected>} />
+          <Route path="/locations/:locationId" element={<Protected><LocationDetailPage /></Protected>} />
         </Routes>
       </BrowserRouter>
     </AuthProvider>

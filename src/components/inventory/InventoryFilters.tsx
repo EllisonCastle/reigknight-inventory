@@ -4,7 +4,8 @@ import { Button } from '../ui/Button'
 import { BottomSheet } from '../ui/BottomSheet'
 import { CATEGORIES, COLORS, CONDITIONS, MATERIALS } from '../../constants/inventory'
 import { needsAttention } from '../../lib/inventoryStatus'
-import type { InventoryItem } from '../../types'
+import { useLocations } from '../../hooks/useLocations'
+import type { InventoryItem, LocationDoc } from '../../types'
 
 export interface InventoryFilterState {
   search: string
@@ -12,7 +13,7 @@ export interface InventoryFilterState {
   material: string
   color: string
   tags: string[]
-  location: string
+  locationId: string
   bin: string
   condition: string
   attentionOnly: boolean
@@ -24,7 +25,7 @@ export const emptyInventoryFilters: InventoryFilterState = {
   material: '',
   color: '',
   tags: [],
-  location: '',
+  locationId: '',
   bin: '',
   condition: '',
   attentionOnly: false,
@@ -57,22 +58,25 @@ function countActiveFilters(f: InventoryFilterState): number {
   if (f.material) n++
   if (f.color) n++
   if (f.tags.length > 0) n++
-  if (f.location) n++
+  if (f.locationId) n++
   if (f.bin) n++
   if (f.condition) n++
   if (f.attentionOnly) n++
   return n
 }
 
+/** Free-text bins on each item's storage entries — falls back to the dormant legacy `bin` for items not yet migrated. */
+function itemBins(item: InventoryItem): string[] {
+  if (item.storageEntries?.length) return item.storageEntries.map((e) => e.bin).filter(Boolean)
+  return item.bin ? [item.bin] : []
+}
+
 export function InventoryFilters({ items, value, onChange, sort, onSortChange }: InventoryFiltersProps) {
   const [sheetOpen, setSheetOpen] = useState(false)
+  const { locations } = useLocations()
 
   const allTags = useMemo(() => Array.from(new Set(items.flatMap((i) => i.tags ?? []))).sort(), [items])
-  const allLocations = useMemo(
-    () => Array.from(new Set(items.map((i) => i.location).filter(Boolean))).sort(),
-    [items],
-  )
-  const allBins = useMemo(() => Array.from(new Set(items.map((i) => i.bin).filter(Boolean))).sort(), [items])
+  const allBins = useMemo(() => Array.from(new Set(items.flatMap(itemBins))).sort(), [items])
 
   const toggleTag = (tag: string) => {
     const next = value.tags.includes(tag) ? value.tags.filter((t) => t !== tag) : [...value.tags, tag]
@@ -121,11 +125,11 @@ export function InventoryFilters({ items, value, onChange, sort, onSortChange }:
             </option>
           ))}
         </Select>
-        <Select value={value.location} onChange={(e) => onChange({ ...value, location: e.target.value })}>
+        <Select value={value.locationId} onChange={(e) => onChange({ ...value, locationId: e.target.value })}>
           <option value="">All locations</option>
-          {allLocations.map((l) => (
-            <option key={l} value={l}>
-              {l}
+          {locations.map((l) => (
+            <option key={l.id} value={l.id}>
+              {l.name}
             </option>
           ))}
         </Select>
@@ -215,20 +219,24 @@ export function applyInventoryFilters(items: InventoryItem[], filters: Inventory
     if (filters.category && item.category !== filters.category) return false
     if (filters.material && item.material !== filters.material) return false
     if (filters.color && item.color !== filters.color) return false
-    if (filters.location && item.location !== filters.location) return false
-    if (filters.bin && item.bin !== filters.bin) return false
+    if (filters.locationId && !(item.storageEntries ?? []).some((e) => e.locationId === filters.locationId)) return false
+    if (filters.bin && !itemBins(item).includes(filters.bin)) return false
     if (filters.condition && item.condition !== filters.condition) return false
     if (filters.tags.length > 0 && !filters.tags.some((t) => item.tags?.includes(t))) return false
     if (filters.attentionOnly && !needsAttention(item)) return false
     if (search) {
-      const haystack = `${item.name} ${item.description} ${item.bin}`.toLowerCase()
+      const haystack = `${item.name} ${item.description} ${itemBins(item).join(' ')}`.toLowerCase()
       if (!haystack.includes(search)) return false
     }
     return true
   })
 }
 
-export function applyInventorySort(items: InventoryItem[], sort: InventorySortKey): InventoryItem[] {
+export function applyInventorySort(
+  items: InventoryItem[],
+  sort: InventorySortKey,
+  locationsById?: Map<string, LocationDoc>,
+): InventoryItem[] {
   const sorted = [...items]
   switch (sort) {
     case 'name':
@@ -237,8 +245,15 @@ export function applyInventorySort(items: InventoryItem[], sort: InventorySortKe
       return sorted.sort((a, b) => a.category.localeCompare(b.category))
     case 'condition':
       return sorted.sort((a, b) => a.condition.localeCompare(b.condition))
-    case 'location':
-      return sorted.sort((a, b) => a.location.localeCompare(b.location))
+    case 'location': {
+      // Multi-location items sort by their first storage entry's resolved name.
+      const nameFor = (item: InventoryItem): string => {
+        const entry = item.storageEntries?.[0]
+        if (entry) return locationsById?.get(entry.locationId)?.name ?? ''
+        return item.location ?? ''
+      }
+      return sorted.sort((a, b) => nameFor(a).localeCompare(nameFor(b)))
+    }
     case 'needsWork':
       return sorted.sort((a, b) => {
         const aWork = a.statusBreakdown.needsRepair + a.statusBreakdown.needsReplacement

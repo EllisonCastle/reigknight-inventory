@@ -8,6 +8,7 @@ import { useVendors } from '../hooks/useVendors'
 import { usePermissions } from '../hooks/usePermissions'
 import { EventForm, type EventFormFields } from '../components/events/EventForm'
 import { ReservationManager } from '../components/events/ReservationManager'
+import { CompleteEventButton } from '../components/events/CompleteEventButton'
 import { PullListSection } from '../components/events/PullListSection'
 import { TaskManager } from '../components/tasks/TaskManager'
 import { AgendaManager } from '../components/agenda/AgendaManager'
@@ -34,6 +35,11 @@ export function EventDetailPage() {
     if (!event) return
     await updateEvent(event.id, values)
     setEditOpen(false)
+  }
+
+  const handleCompleteEvent = async () => {
+    if (!event) return
+    await updateEvent(event.id, { status: 'completed' })
   }
 
   const shareUrl = event ? `${window.location.origin}/share/${event.shareToken}` : ''
@@ -72,11 +78,14 @@ export function EventDetailPage() {
             <StatusBadge status={event.status} />
           </div>
         </div>
-        <span title={isAdmin ? undefined : 'Admin only'}>
-          <Button variant="secondary" onClick={() => setEditOpen(true)} disabled={!isAdmin}>
-            Edit event
-          </Button>
-        </span>
+        <div className="flex flex-wrap items-start gap-2">
+          <span title={isAdmin ? undefined : 'Admin only'}>
+            <Button variant="secondary" onClick={() => setEditOpen(true)} disabled={!isAdmin}>
+              Edit event
+            </Button>
+          </span>
+          {isAdmin && <CompleteEventButton event={event} items={items} onComplete={handleCompleteEvent} />}
+        </div>
       </div>
 
       {(event.clientName || event.clientContact || event.notes) && (

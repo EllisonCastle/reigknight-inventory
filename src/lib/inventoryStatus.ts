@@ -1,7 +1,20 @@
-import type { InventoryItem, StatusBreakdown } from '../types'
+import type { InventoryItem, StatusBreakdown, StorageEntry } from '../types'
 
-export function availableForRental(item: Pick<InventoryItem, 'totalQuantity' | 'statusBreakdown'>): number {
-  return item.totalQuantity - item.statusBreakdown.needsRepair - item.statusBreakdown.needsReplacement
+/**
+ * Item total is derived from storageEntries, not stored. Items that haven't been through
+ * the Phase B storage migration yet fall back to the dormant legacy `totalQuantity` field
+ * so the app keeps working during the window between shipping Checkpoint 1 and running
+ * the migration — this fallback stops mattering once storageEntries is populated.
+ */
+export function getItemTotalQuantity(item: Pick<InventoryItem, 'storageEntries' | 'totalQuantity'>): number {
+  if (item.storageEntries?.length) {
+    return item.storageEntries.reduce((sum, e) => sum + e.quantity, 0)
+  }
+  return item.totalQuantity ?? 0
+}
+
+export function availableForRental(item: Pick<InventoryItem, 'storageEntries' | 'totalQuantity' | 'statusBreakdown'>): number {
+  return getItemTotalQuantity(item) - item.statusBreakdown.needsRepair - item.statusBreakdown.needsReplacement
 }
 
 export function needsAttention(item: Pick<InventoryItem, 'statusBreakdown'>): boolean {
@@ -63,6 +76,18 @@ export function validateStatusCounts(totalQuantity: number, needsRepair: number,
     return { good, valid: false, error: `Needs Repair + Needs Replacement (${needsRepair + needsReplacement}) can't exceed Total Quantity Owned (${totalQuantity}).` }
   }
   return { good, valid: true }
+}
+
+/** Removes `amount` units from the tail of the entries list first — used when status changes shrink the total (e.g. "removed, not replaced"). */
+export function reduceStorageEntriesBy(entries: StorageEntry[], amount: number): StorageEntry[] {
+  let remaining = amount
+  const next = [...entries]
+  for (let i = next.length - 1; i >= 0 && remaining > 0; i--) {
+    const take = Math.min(next[i].quantity, remaining)
+    next[i] = { ...next[i], quantity: next[i].quantity - take }
+    remaining -= take
+  }
+  return next
 }
 
 export function markRepaired(status: StatusBreakdown): StatusBreakdown {

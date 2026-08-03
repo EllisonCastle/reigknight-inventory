@@ -14,11 +14,28 @@ import {
 import { CsvExportButton } from '../components/inventory/CsvExportButton'
 import { CsvImportModal } from '../components/inventory/CsvImportModal'
 import { QuickActionsMenu } from '../components/inventory/QuickActionsMenu'
+import { BatchMoveForm } from '../components/inventory/BatchMoveForm'
+import { runBatchMove } from '../lib/batchMove'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
-import { attentionInfo, availableForRental } from '../lib/inventoryStatus'
-import type { InventoryItem, InventoryPhoto } from '../types'
+import { attentionInfo, getItemTotalQuantity } from '../lib/inventoryStatus'
+import { getEffectiveAvailability } from '../lib/kits'
+import { useLocations } from '../hooks/useLocations'
+import type { InventoryItem, InventoryPhoto, LocationDoc } from '../types'
+
+/** Compact location summary for list rows: the single entry's resolved name, or a count when spread across several. */
+function locationSummary(item: InventoryItem, locationsById: Map<string, LocationDoc>): string {
+  if (item.storageEntries?.length) {
+    if (item.storageEntries.length === 1) {
+      const e = item.storageEntries[0]
+      const loc = locationsById.get(e.locationId)
+      return loc ? `${loc.name}${e.bin ? ` · ${e.bin}` : ''}` : 'Unknown location'
+    }
+    return `${item.storageEntries.length} locations`
+  }
+  return item.location || ''
+}
 
 function stripeClass(tone: 'amber' | 'red' | null): string {
   if (tone === 'red') return 'border-l-red-500'
@@ -42,16 +59,48 @@ function AttentionBadge({ tone, label }: { tone: 'amber' | 'red' | null; label: 
 export function InventoryPage() {
   const { items, loading, error, createItem, updateItem, deleteItem } = useInventoryItems()
   const { isAdminOrStaff } = usePermissions()
+  const { locations } = useLocations()
+  const locationsById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
+  const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
   const [filters, setFilters] = useState<InventoryFilterState>(emptyInventoryFilters)
   const [sort, setSort] = useState<InventorySortKey>('updatedAt')
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)
   const [editing, setEditing] = useState<InventoryItem | undefined>(undefined)
+  const [selectMode, setSelectMode] = useState(false)
+  const [selectedIds, setSelectedIds] = useState<Set<string>>(new Set())
+  const [moveModalOpen, setMoveModalOpen] = useState(false)
 
   const filtered = useMemo(
-    () => applyInventorySort(applyInventoryFilters(items, filters), sort),
-    [items, filters, sort],
+    () => applyInventorySort(applyInventoryFilters(items, filters), sort, locationsById),
+    [items, filters, sort, locationsById],
   )
+
+  // Batch move's source is whatever specific location the list is currently filtered to — moving
+  // only makes sense from one unambiguous starting point per the spec's "filter, then move" flow.
+  const sourceLocationId = filters.locationId || null
+  const sourceLocation = sourceLocationId ? locationsById.get(sourceLocationId) : undefined
+
+  const toggleSelected = (id: string) => {
+    setSelectedIds((prev) => {
+      const next = new Set(prev)
+      if (next.has(id)) next.delete(id)
+      else next.add(id)
+      return next
+    })
+  }
+
+  const exitSelectMode = () => {
+    setSelectMode(false)
+    setSelectedIds(new Set())
+  }
+
+  const handleBatchMove = async (targetLocationId: string, targetSubLocationId: string | null) => {
+    if (!sourceLocationId) return
+    await runBatchMove(items, [...selectedIds], sourceLocationId, targetLocationId, targetSubLocationId)
+    setMoveModalOpen(false)
+    exitSelectMode()
+  }
 
   const openCreate = () => {
     setEditing(undefined)
@@ -106,6 +155,45 @@ export function InventoryPage() {
 
       <InventoryFilters items={items} value={filters} onChange={setFilters} sort={sort} onSortChange={setSort} />
 
+      {sourceLocationId && isAdminOrStaff && (
+        <div className="mb-4 flex flex-wrap items-center justify-between gap-2 rounded-lg border border-gray-200 bg-surface p-3">
+          <label className="flex min-h-[44px] items-center gap-2 text-base text-charcoal">
+            <input
+              type="checkbox"
+              checked={selectMode}
+              onChange={(e) => (e.target.checked ? setSelectMode(true) : exitSelectMode())}
+              className="h-5 w-5"
+            />
+            Select items to move out of {sourceLocation?.name ?? 'this location'}
+            {selectMode && selectedIds.size > 0 ? ` · ${selectedIds.size} selected` : ''}
+          </label>
+          {selectMode && (
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant="secondary"
+                onClick={() => setSelectedIds(new Set(filtered.map((i) => i.id)))}
+                className="min-h-[44px]"
+              >
+                Select all ({filtered.length})
+              </Button>
+              <Button
+                type="button"
+                variant="secondary"
+                disabled={selectedIds.size === 0}
+                onClick={() => setSelectedIds(new Set())}
+                className="min-h-[44px]"
+              >
+                Clear
+              </Button>
+              <Button type="button" disabled={selectedIds.size === 0} onClick={() => setMoveModalOpen(true)} className="min-h-[44px]">
+                Move {selectedIds.size || ''} item{selectedIds.size === 1 ? '' : 's'}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       <ErrorNotice message={error} />
 
       {loading ? (
@@ -123,6 +211,15 @@ export function InventoryPage() {
                   key={item.id}
                   className={`flex gap-3 rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${stripeClass(attention.tone)}`}
                 >
+                  {selectMode && (
+                    <input
+                      type="checkbox"
+                      checked={selectedIds.has(item.id)}
+                      onChange={() => toggleSelected(item.id)}
+                      className="mt-1 h-5 w-5 shrink-0"
+                      aria-label={`Select ${item.name}`}
+                    />
+                  )}
                   <Link to={`/inventory/${item.id}`} className="shrink-0">
                     {primary ? (
                       <img src={primary.url} alt="" className="h-14 w-14 rounded object-cover" />
@@ -134,11 +231,11 @@ export function InventoryPage() {
                     <p className="truncate text-base font-medium text-charcoal">{item.name}</p>
                     <p className="truncate text-sm text-gray-500">
                       {item.category || '—'}
-                      {item.location ? ` · ${item.location}` : ''}
+                      {locationSummary(item, locationsById) ? ` · ${locationSummary(item, locationsById)}` : ''}
                     </p>
                     <p className="text-sm text-gray-500">
-                      {availableForRental(item)} available
-                      {availableForRental(item) !== item.totalQuantity ? ` of ${item.totalQuantity}` : ''}
+                      {getEffectiveAvailability(item, itemsById)} available
+                      {getEffectiveAvailability(item, itemsById) !== getItemTotalQuantity(item) ? ` of ${getItemTotalQuantity(item)}` : ''}
                     </p>
                     <div className="mt-1">
                       <AttentionBadge tone={attention.tone} label={attention.label} />
@@ -161,6 +258,7 @@ export function InventoryPage() {
             <table className="w-full text-base">
               <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
                 <tr>
+                  {selectMode && <th className="px-4 py-2.5" />}
                   <th className="px-4 py-2.5" />
                   <th className="px-4 py-2.5">Name</th>
                   <th className="px-4 py-2.5">Category</th>
@@ -177,6 +275,17 @@ export function InventoryPage() {
                   const attention = attentionInfo(item)
                   return (
                     <tr key={item.id} className={`border-l-4 ${stripeClass(attention.tone)}`}>
+                      {selectMode && (
+                        <td className="px-4 py-2.5">
+                          <input
+                            type="checkbox"
+                            checked={selectedIds.has(item.id)}
+                            onChange={() => toggleSelected(item.id)}
+                            className="h-5 w-5"
+                            aria-label={`Select ${item.name}`}
+                          />
+                        </td>
+                      )}
                       <td className="px-4 py-2.5">
                         <Link to={`/inventory/${item.id}`}>
                           {primary ? (
@@ -192,12 +301,9 @@ export function InventoryPage() {
                         </Link>
                       </td>
                       <td className="px-4 py-2.5 text-gray-600">{item.category || '—'}</td>
-                      <td className="px-4 py-2.5 text-gray-600">
-                        {item.location || '—'}
-                        {item.bin ? ` · ${item.bin}` : ''}
-                      </td>
-                      <td className="px-4 py-2.5 text-gray-600">{item.totalQuantity}</td>
-                      <td className="px-4 py-2.5 text-gray-600">{availableForRental(item)}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{locationSummary(item, locationsById) || '—'}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{getItemTotalQuantity(item)}</td>
+                      <td className="px-4 py-2.5 text-gray-600">{getEffectiveAvailability(item, itemsById)}</td>
                       <td className="px-4 py-2.5">
                         {attention.label ? (
                           <AttentionBadge tone={attention.tone} label={attention.label} />
@@ -241,6 +347,7 @@ export function InventoryPage() {
       <Modal open={modalOpen} onClose={() => setModalOpen(false)} title={editing ? 'Edit item' : 'Add item'} wide>
         <InventoryForm
           initial={editing}
+          items={items}
           onCancel={() => setModalOpen(false)}
           onCreate={handleCreate}
           onUpdate={handleUpdate}
@@ -250,6 +357,15 @@ export function InventoryPage() {
       </Modal>
 
       <CsvImportModal open={importOpen} onClose={() => setImportOpen(false)} items={items} />
+
+      <Modal open={moveModalOpen} onClose={() => setMoveModalOpen(false)} title="Move items">
+        <BatchMoveForm
+          sourceLocationName={sourceLocation?.name ?? ''}
+          itemCount={selectedIds.size}
+          onCancel={() => setMoveModalOpen(false)}
+          onConfirm={handleBatchMove}
+        />
+      </Modal>
     </div>
   )
 }

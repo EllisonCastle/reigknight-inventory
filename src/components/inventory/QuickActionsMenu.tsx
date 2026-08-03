@@ -3,9 +3,9 @@ import { BottomSheet } from '../ui/BottomSheet'
 import { Button } from '../ui/Button'
 import { StatusPanel } from './StatusPanel'
 import { PhotoUploader } from './PhotoUploader'
-import { rebalanceForNewTotal, validateStatusCounts } from '../../lib/inventoryStatus'
+import { getItemTotalQuantity, rebalanceForNewTotal, reduceStorageEntriesBy, validateStatusCounts } from '../../lib/inventoryStatus'
 import type { InventoryFormFields } from './InventoryForm'
-import type { InventoryItem, InventoryPhoto, StatusBreakdown } from '../../types'
+import type { InventoryItem, InventoryPhoto, StatusBreakdown, StorageEntry } from '../../types'
 
 type Sheet = 'menu' | 'status' | 'photo' | 'quantity' | null
 
@@ -97,14 +97,17 @@ function StatusSheet({
   onClose: () => void
   onUpdate: (id: string, data: Partial<InventoryFormFields>) => Promise<void>
 }) {
-  const [totalQuantity, setTotalQuantity] = useState(item.totalQuantity)
   const [statusBreakdown, setStatusBreakdown] = useState<StatusBreakdown>(item.statusBreakdown)
+  const [storageEntries, setStorageEntries] = useState<StorageEntry[]>(item.storageEntries ?? [])
+  const totalQuantity = getItemTotalQuantity({ storageEntries, totalQuantity: item.totalQuantity })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const handleChange = (next: StatusBreakdown, totalQuantityDelta?: number) => {
     setStatusBreakdown(next)
-    if (totalQuantityDelta) setTotalQuantity((t) => t + totalQuantityDelta)
+    if (totalQuantityDelta && totalQuantityDelta < 0) {
+      setStorageEntries((entries) => reduceStorageEntriesBy(entries, -totalQuantityDelta))
+    }
   }
 
   const handleSave = async () => {
@@ -115,7 +118,13 @@ function StatusSheet({
     }
     setSaving(true)
     try {
-      await onUpdate(item.id, { totalQuantity, statusBreakdown })
+      const data: Partial<InventoryFormFields> = { statusBreakdown }
+      // Only write storageEntries once the item actually has real entries — writing an empty
+      // array to a not-yet-migrated item would make the migration tool think it's done.
+      if ((item.storageEntries?.length ?? 0) > 0 || storageEntries.length > 0) {
+        data.storageEntries = storageEntries
+      }
+      await onUpdate(item.id, data)
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -152,26 +161,49 @@ function QuantitySheet({
   onClose: () => void
   onUpdate: (id: string, data: Partial<InventoryFormFields>) => Promise<void>
 }) {
-  const [totalQuantity, setTotalQuantity] = useState(item.totalQuantity)
+  const entries = item.storageEntries ?? []
+  const singleEntry = entries.length === 1 ? entries[0] : null
+  const [quantity, setQuantity] = useState(singleEntry?.quantity ?? 0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
 
   const step = (delta: number) => {
-    setTotalQuantity((t) => Math.max(0, t + delta))
+    setQuantity((q) => Math.max(0, q + delta))
   }
 
   const handleSave = async () => {
-    const statusBreakdown = rebalanceForNewTotal(item.statusBreakdown, item.totalQuantity, totalQuantity)
+    if (!singleEntry) return
+    const prevTotal = getItemTotalQuantity(item)
+    const nextTotal = prevTotal - singleEntry.quantity + quantity
+    const statusBreakdown = rebalanceForNewTotal(item.statusBreakdown, prevTotal, nextTotal)
+    const storageEntries = entries.map((e) => (e.id === singleEntry.id ? { ...e, quantity } : e))
     setSaving(true)
     setError('')
     try {
-      await onUpdate(item.id, { totalQuantity, statusBreakdown })
+      await onUpdate(item.id, { storageEntries, statusBreakdown })
       onClose()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
       setSaving(false)
     }
+  }
+
+  if (!singleEntry) {
+    return (
+      <BottomSheet open onClose={onClose} title="Adjust quantity">
+        <p className="text-base text-gray-500">
+          {entries.length === 0
+            ? "This item hasn't been added to a storage location yet — use the full edit form, or run the migration tool from the Locations page."
+            : 'This item is stored in multiple locations — adjust quantities from the full edit form.'}
+        </p>
+        <div className="mt-4 flex justify-end">
+          <Button type="button" variant="secondary" onClick={onClose} className="min-h-[44px]">
+            Close
+          </Button>
+        </div>
+      </BottomSheet>
+    )
   }
 
   return (
@@ -186,7 +218,7 @@ function QuantitySheet({
         >
           −
         </button>
-        <span className="min-w-[64px] text-center text-2xl font-semibold text-charcoal">{totalQuantity}</span>
+        <span className="min-w-[64px] text-center text-2xl font-semibold text-charcoal">{quantity}</span>
         <button
           type="button"
           onClick={() => step(1)}

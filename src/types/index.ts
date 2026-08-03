@@ -25,6 +25,22 @@ export interface StatusBreakdown {
   needsReplacement: number
 }
 
+/** One place an item's units live: a location, optional sub-location, optional free-text bin, and a quantity. */
+export interface StorageEntry {
+  id: string
+  locationId: string
+  subLocationId: string | null
+  bin: string
+  quantity: number
+  packSize: number | null
+}
+
+/** One line in a kit's bill of materials — reserving `quantityPerUnit * N` of the child whenever N of the parent is reserved. */
+export interface KitComponent {
+  childItemId: string
+  quantityPerUnit: number
+}
+
 export interface InventoryItem {
   id: string
   name: string
@@ -34,9 +50,7 @@ export interface InventoryItem {
   color: string
   colorCustom: string
   tags: string[]
-  totalQuantity: number
-  location: string
-  bin: string
+  storageEntries: StorageEntry[]
   condition: string
   statusBreakdown: StatusBreakdown
   photos: InventoryPhoto[]
@@ -48,7 +62,40 @@ export interface InventoryItem {
   vendorId: string
   createdAt: Timestamp | null
   updatedAt: Timestamp | null
+  /**
+   * Pre-Phase-B fields. Left dormant on migrated docs (not stripped, per the
+   * user's explicit call — original data stays recoverable on the doc itself).
+   * Only read as a defensive fallback for items that haven't run through the
+   * storage-entries migration yet; never written by any code after Checkpoint 1.
+   */
+  location?: string
+  bin?: string
+  totalQuantity?: number
+  /**
+   * Checkpoint 4 (kits/bundles) — optional, defaults applied at read time via
+   * src/lib/kits.ts so pre-existing items (no stockType/components field at all)
+   * behave exactly as plain stocked items with no components.
+   */
+  stockType?: 'stocked' | 'bundle'
+  components?: KitComponent[]
 }
+
+/** subLocations are embedded on the parent LocationDoc — items reference subLocationId only, never a denormalized name, so renames propagate for free. */
+export interface SubLocation {
+  id: string
+  name: string
+}
+
+export interface LocationDoc {
+  id: string
+  name: string
+  type: 'standard' | 'vendor'
+  subLocations: SubLocation[]
+  createdAt: Timestamp | null
+  updatedAt: Timestamp | null
+}
+
+export const THROUGH_VENDOR_LOCATION_ID = 'through-vendor'
 
 export type EventStatus = 'draft' | 'confirmed' | 'in_progress' | 'completed' | 'cancelled'
 
@@ -80,12 +127,22 @@ export interface Reservation {
   id: string
   eventId: string
   itemId: string
-  quantity: number
+  quantityInvoiced: number
+  quantityCommitted: number
   reservedFrom: Timestamp
   reservedTo: Timestamp
   eventStatus: EventStatus
   dropOffLocation: string
   createdAt: Timestamp | null
+  /** Pre-Checkpoint-3 field, dormant on old reservations — read as a fallback until edited. */
+  quantity?: number
+  /**
+   * Checkpoint 4 (kits/bundles) — set only on auto-generated child-component reservations
+   * (itemId is the child, not what the admin directly picked). Unset on every reservation the
+   * admin creates directly, including a kit's own parent-level reservation. Deleting the parent
+   * cascades to delete every reservation with parentReservationId === parent.id.
+   */
+  parentReservationId?: string
 }
 
 export interface Person {

@@ -9,6 +9,7 @@ const navItems = [
   { to: '/', label: 'Dashboard', end: true },
   { to: '/venues', label: 'Venues' },
   { to: '/inventory', label: 'Inventory' },
+  { to: '/locations', label: 'Locations' },
   { to: '/events', label: 'Events' },
   { to: '/my-tasks', label: 'My Tasks' },
   { to: '/vendors', label: 'Vendors' },

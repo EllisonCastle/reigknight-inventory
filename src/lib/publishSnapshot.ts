@@ -1,5 +1,6 @@
 import { collection, doc, getDoc, getDocs, query, serverTimestamp, setDoc, updateDoc, where } from 'firebase/firestore'
 import { db } from './firebase'
+import { getInvoicedQuantity } from './reservationQuantity'
 import type {
   AgendaItemDoc,
   EventDoc,
@@ -73,15 +74,20 @@ export async function publishEventSnapshot(eventId: string): Promise<void> {
       status: event.status,
       clientName: event.clientName,
     },
-    inventory: reservations.map((r) => {
-      const item = itemsById.get(r.itemId)
-      return {
-        itemId: r.itemId,
-        itemName: item?.name ?? '(deleted item)',
-        quantity: r.quantity,
-        primaryPhotoUrl: item ? primaryPhotoUrl(item.photos) : null,
-      }
-    }),
+    // Auto-generated child-component reservations (Checkpoint 4 kits) are excluded — the customer
+    // sees the kit they booked, not its individual pulled components.
+    inventory: reservations
+      .filter((r) => !r.parentReservationId)
+      .map((r) => {
+        const item = itemsById.get(r.itemId)
+        return {
+          itemId: r.itemId,
+          itemName: item?.name ?? '(deleted item)',
+          // Customer-facing view shows what they're billed for, not any bin-rounded committed spare.
+          quantity: getInvoicedQuantity(r),
+          primaryPhotoUrl: item ? primaryPhotoUrl(item.photos) : null,
+        }
+      }),
     tasks: tasks.map((t) => ({
       id: t.id,
       title: t.title,
