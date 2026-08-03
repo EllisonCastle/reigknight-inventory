@@ -99,7 +99,10 @@ export async function checkInventoryAvailability(
     const reservedTo = r.reservedTo as Timestamp
     if (
       d.id !== excludeReservationId &&
+      // Completed events return their inventory immediately (Checkpoint 5), same as cancelled —
+      // don't wait for the reservation window to pass before freeing the committed quantity.
       r.eventStatus !== 'cancelled' &&
+      r.eventStatus !== 'completed' &&
       reservedTo.toMillis() > from.toMillis()
     ) {
       // Committed quantity is what blocks availability; falls back to the pre-Checkpoint-3

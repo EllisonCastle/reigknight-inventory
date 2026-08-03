@@ -86,12 +86,19 @@ Firestore is collections of documents. Reservations and tasks are **top-level co
   },
   photos: [ { url, isPrimary, sortOrder } ],   // uploaded to Cloud Storage
   model,                // optional — spec/model name
+  notes,                // OPTIONAL — free-text internal notes about the item
+  dimensions,           // OPTIONAL — free text, e.g. "60in dia x 30in H" or "24 x 18 x 12 in"
+  costPrice,            // OPTIONAL — what it cost Reigknight per unit (number, nullable)
+  rentalPrice,          // OPTIONAL — what a customer pays to rent per unit (number, nullable) — seeds invoice line items
+  vendorId,             // OPTIONAL — vendors/{vendorId}, for items sourced through a vendor rather than owned stock
   createdAt,
   updatedAt
 }
 ```
+> **Gross profit** = `rentalPrice − costPrice`, computed and displayed per unit when both are set (never stored). Show it on the item detail page and the edit form.
+> **Vendor-sourced items:** when an item comes from a vendor (e.g. plates through the caterer), `vendorId` points to the vendor and `location` may be blank or set to a "Through Vendor" value. The detail page shows the vendor's name/contact in that case.
 
-**Required on save:** `name`, `category`, `totalQuantity`, `location`, `statusBreakdown` (with counts summing correctly). Everything else is optional.
+**Required on save:** `name`, `category`, `totalQuantity`, `location`, `statusBreakdown` (with counts summing correctly). Everything else — including `material`, `color`, `notes`, `dimensions`, `costPrice`, `rentalPrice`, `vendorId`, `model` — is optional.
 
 **Derived fields (computed in code, don't store):**
 - `needsAttention` = `statusBreakdown.needsRepair + statusBreakdown.needsReplacement > 0`
@@ -522,9 +529,35 @@ Two agenda types per event, sharing one schema, plus a small vendors table.
 - A simple **Vendors** page: list, add, edit, delete. Used to populate the vendor dropdown on agenda items.
 - Deleting a vendor with existing assignments prompts to reassign or convert those items to `assigneeType: 'none'`.
 
+**Phase A — Quick wins (item fields + mover's pull list + @-mentions):**
+- New **optional** item fields (none required to save): `notes` (free text), `dimensions` (free text), `costPrice`, `rentalPrice`, and `vendorId`. Display **gross profit = rentalPrice − costPrice** per unit when both are set (computed, not stored).
+- **Mover's pull list per event** — a printable/exportable sheet the moving team carries. For the selected event, list every reserved item with: item name, **quantity to pull**, **storage location + bin**, and **drop-off location**. **Kits explode into their child components**, each showing its own location/bin (e.g. reserving Candelabras lists the candelabras' location AND the taper candles' location). Group by storage location so movers make efficient trips. Export to PDF, printable on 8.5×11.
+- **Drop-off location** — a per-reservation free-text field where admin specifies where each item goes at the event ("Main Stage," "Kitchen area," "Ceremony lawn"). Appears on the pull list.
+- **@-mentions in task messages** — typing `@` shows an autocomplete of admin/staff users; mentioning someone flags them in the unread/notification logic. Vendors have no accounts, so `@`-mention is users-with-logins only.
+
 **Phase 4 — Check-in:** link `checkinEventId` and surface live check-in stats on the event dashboard from the shared project.
 
-**Later (not now):**
+**Phase B — Logistics system (one coherent phase):**
+- **Storage model:** `locations` collection + Locations management page (add/edit/remove; editing name/description auto-updates every item referencing it). Each location can have **sub-locations** (optional, managed on the Locations page under their parent location — e.g. Office → Cage, Marketing Room, Kitchen). Not all locations have sub-locations. Editing a sub-location name auto-updates everywhere it's referenced.
+  - Each item gets `storageEntries: [{ locationId, subLocationId (optional), bin (optional, free text), quantity }]`; **item total = sum of storage entries** (derived). A storage entry fills in only as much detail as needed: as loose as `{ Barn Shed, qty 1 }` for a tent that just sits in a space, or as precise as `{ Office, Cage, Bin 12, qty 20 }`. Bins and "floating in a location" are the same field — filled or left blank.
+  - Locations and sub-locations are **controlled records** (dropdowns, no free-typing) to prevent the duplicate-spelling problem. Bins stay **free text** on the storage entry.
+  - **Delete protection:** the Locations page must refuse to delete a location or sub-location that still has items assigned to it — show "N items still here, move them first" instead of deleting (same protective pattern as vendor deletion). A location/sub-location can only be deleted once empty.
+  - **Post-migration cleanup workflow (support this flow):** after migration, admin will (1) create the clean target locations + sub-locations, (2) batch-move items off the old migrated locations into the clean ones, (3) delete each old location once it's empty. The delete-protection guard makes this safe — nothing gets orphaned.
+  - Supports one item across many locations/sub-locations/bins. "Through Vendor" as a location type.
+  - **Bin scaffolding:** when adding storage for an item, admin can enter a quantity and a "per bin" pack size and have the app **scaffold multiple bin rows with suggested names** (e.g. 30-A, 30-B, 30-C, 30-D) that admin can rename/confirm — so bin names in the app always match the physical labels admin writes on the bins. Bins carry a **pack size** (units per bin) so committed quantity can round up to whole bins.
+  - **Reservations commit a quantity, not specific named bins.** The app tracks "100 of 200 committed," not "Bin 30-A and 30-B are assigned to this event" — durable against physical bin rearrangement. The pull list tells movers how many whole bins to grab; which physical bins is their call.
+  - **Location detail page doubles as an intake tool.** Opening a location (or sub-location) shows a list of every item currently stored there with quantities (a two-way view: "what's in this spot" and "add to this spot"). It has an **"Add item here"** button that opens the item editor with that location + sub-location **pre-selected**, so cataloging from where you're physically standing skips the location picking. Intake supports a **"save and add another (stay in this location)"** mode: after saving, the form resets but keeps the location/sub-location, so multiple items going into the same spot can be logged in one session without re-selecting or navigating back to inventory.
+- **Migration:** scan existing free-text locations, present the distinct list for admin to map to clean location records (merge duplicates like "Car Wash Bay" → "Wash Bay"), then convert each item's single location to one storage entry. Sub-locations set up by admin after migration.
+- **Batch move:** filter items by location, select, move to another location.
+- **Reserved vs. invoiced:** reservations carry `quantityInvoiced` (customer pays) and `quantityCommitted` (blocks inventory). Committed defaults to a bin-rounded suggestion but is **editable**. Availability blocks committed; invoice reads invoiced.
+- **Kits/bundles:** items can have `components: [{ childItemId, quantityPerUnit }]`, editable in the item form. Reserving a kit commits child quantities and **denies/warns if any child is short**, naming the shortfall. `stockType: 'stocked' | 'bundle'` distinguishes real items that also pull components (candelabra) from virtual sets that only pull components (utensil set). Customer/invoice sees the parent; inventory/pull list sees components.
+- **Complete Event & Return** button on the event page: flips status to `completed` and releases all committed quantities (including exploded kit components) back to available, with a confirmation summary.
+
+**Phase 4.5 — Email notifications:** task-message and event-reminder emails (deferred from 3.8).
+
+**Phase 5 — Quoting & invoicing:** clean, branded customer invoices assembled from an event's reservations — line items from `quantityInvoiced` × `rentalPrice`, subtotal, optional tax/discount/deposit, total, invoice status (draft/sent/paid), castle-appropriate PDF. Built on the pricing + reserved-vs-invoiced data from Phases A and B.
+
+
 - Refactor the check-in app itself to hold **multiple events at once** (tabs), instead of resetting the page per event. Each event tab maps cleanly to a `checkinEventId` here, so this platform links straight to the right one.
 
 ---
