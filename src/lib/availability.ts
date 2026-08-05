@@ -129,3 +129,32 @@ export async function syncReservationsEventStatus(eventId: string, status: Event
   snap.forEach((d) => batch.update(d.ref, { eventStatus: status }))
   await batch.commit()
 }
+
+/**
+ * Carries reservations that were inheriting the event's window along when the event's own
+ * dates change — "inheriting" means the reservation's stored reservedFrom/reservedTo exactly
+ * matched the event's *old* window. Reservations that already genuinely differ (a real custom
+ * date) are left untouched, since they were deliberately set apart from the event window.
+ */
+export async function syncReservationsEventWindow(
+  eventId: string,
+  oldFrom: Timestamp,
+  oldTo: Timestamp,
+  newFrom: Timestamp,
+  newTo: Timestamp,
+) {
+  const snap = await getDocs(query(collection(db, 'reservations'), where('eventId', '==', eventId)))
+  if (snap.empty) return
+  const batch = writeBatch(db)
+  let any = false
+  snap.forEach((d) => {
+    const r = d.data() as Record<string, unknown>
+    const reservedFrom = r.reservedFrom as Timestamp
+    const reservedTo = r.reservedTo as Timestamp
+    if (reservedFrom.toMillis() === oldFrom.toMillis() && reservedTo.toMillis() === oldTo.toMillis()) {
+      batch.update(d.ref, { reservedFrom: newFrom, reservedTo: newTo })
+      any = true
+    }
+  })
+  if (any) await batch.commit()
+}

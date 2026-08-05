@@ -13,6 +13,7 @@ import { getComponents, getStockType } from '../../lib/kits'
 import { useVendors } from '../../hooks/useVendors'
 import { getOrCreateVendorLocation } from '../../lib/vendorLocation'
 import { formatCurrency } from '../../lib/currency'
+import { useSaveFlash } from '../../hooks/useSaveFlash'
 import { THROUGH_VENDOR_LOCATION_ID } from '../../types'
 import type { InventoryItem, InventoryPhoto, KitComponent, StatusBreakdown, StorageEntry } from '../../types'
 import type { ItemPreset } from '../../constants/itemPresets'
@@ -136,6 +137,7 @@ export function InventoryForm({
   const [photos, setPhotos] = useState<InventoryPhoto[]>(initial?.photos ?? [])
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { saved, flash } = useSaveFlash()
 
   // Total quantity is now derived from storageEntries (or the vendor quantity), never typed
   // directly — this keeps the good/needsRepair/needsReplacement auto-balance invariant firing
@@ -281,6 +283,7 @@ export function InventoryForm({
         updateSavedId(id)
       }
       setConfirmed(true)
+      flash()
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -471,8 +474,8 @@ export function InventoryForm({
         <Button type="button" variant="secondary" onClick={onCancel} className="min-h-[44px]">
           {confirmed ? 'Close' : 'Cancel'}
         </Button>
-        <Button type="submit" disabled={saving || preparingDraft} className="min-h-[44px]">
-          {preparingDraft ? 'Preparing…' : saving ? 'Saving…' : confirmed ? 'Save changes' : 'Create item'}
+        <Button type="submit" disabled={saving || preparingDraft || saved} className="min-h-[44px]">
+          {saved ? 'Saved ✓' : preparingDraft ? 'Preparing…' : saving ? 'Saving…' : confirmed ? 'Save changes' : 'Create item'}
         </Button>
       </div>
 

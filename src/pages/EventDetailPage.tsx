@@ -34,7 +34,6 @@ export function EventDetailPage() {
   const handleSubmit = async (values: EventFormFields) => {
     if (!event) return
     await updateEvent(event.id, values)
-    setEditOpen(false)
   }
 
   const handleCompleteEvent = async () => {

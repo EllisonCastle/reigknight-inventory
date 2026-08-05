@@ -48,7 +48,6 @@ export function LocationsPage() {
       setEditing(locations.find((l) => l.id === editing.id) ?? editing)
     } else {
       await createLocation(values)
-      setModalOpen(false)
     }
   }
 

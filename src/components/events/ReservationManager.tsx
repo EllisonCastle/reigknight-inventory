@@ -1,4 +1,5 @@
-import { Fragment, useState, type FormEvent } from 'react'
+import { Fragment, useState, type FormEvent, type ReactNode } from 'react'
+import type { Timestamp } from 'firebase/firestore'
 import { useReservationsForEvent } from '../../hooks/useReservations'
 import { checkInventoryAvailability, type InventoryAvailability } from '../../lib/availability'
 import { availableForRental, getItemTotalQuantity } from '../../lib/inventoryStatus'
@@ -6,12 +7,24 @@ import { getBinRoundingPackSize, getCommittedQuantity, getInvoicedQuantity, sugg
 import { getComponents, getEffectiveAvailability, getStockType } from '../../lib/kits'
 import { localInputToTimestamp, timestampToLocalInput, formatTimestamp } from '../../lib/datetime'
 import { Button } from '../ui/Button'
-import { FormRow, Input, Select } from '../ui/Field'
+import { Input, Select } from '../ui/Field'
 import { InventoryConflictWarning } from './ConflictWarning'
 import { DropOffCell } from './DropOffCell'
 import { QuantityCell } from './QuantityCell'
+import { ReservationDatesCell } from './ReservationDatesCell'
 import { ErrorNotice } from '../ui/ErrorNotice'
 import type { EventDoc, InventoryItem, Reservation } from '../../types'
+
+/** Fixed-height label so mismatched label lengths ("Quantity invoiced (customer pays)" vs. "From")
+ * stop pushing this form's inputs out of alignment with each other. */
+function AddRowField({ label, children }: { label: string; children: ReactNode }) {
+  return (
+    <div>
+      <label className="mb-1 flex min-h-[2.75rem] items-end text-sm font-medium text-charcoal">{label}</label>
+      {children}
+    </div>
+  )
+}
 
 interface ReservationManagerProps {
   event: EventDoc
@@ -38,6 +51,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
   const [quantityInvoiced, setQuantityInvoiced] = useState('1')
   const [quantityCommitted, setQuantityCommitted] = useState('1')
   const [committedTouched, setCommittedTouched] = useState(false)
+  const [useCustomDates, setUseCustomDates] = useState(false)
   const [reservedFrom, setReservedFrom] = useState(timestampToLocalInput(event.startAt))
   const [reservedTo, setReservedTo] = useState(timestampToLocalInput(event.endAt))
   const [dropOffLocation, setDropOffLocation] = useState('')
@@ -108,13 +122,15 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
       setError('Committed quantity must be a positive number.')
       return
     }
-    if (!reservedFrom || !reservedTo) {
+    if (useCustomDates && (!reservedFrom || !reservedTo)) {
       setError('From and to are required.')
       return
     }
 
-    const fromTs = localInputToTimestamp(reservedFrom)
-    const toTs = localInputToTimestamp(reservedTo)
+    // Off (the default): inherit the event's window directly, no string round-trip. On: use the
+    // admin's typed custom window for just this item.
+    const fromTs = useCustomDates ? localInputToTimestamp(reservedFrom) : event.startAt
+    const toTs = useCustomDates ? localInputToTimestamp(reservedTo) : event.endAt
     if (fromTs.toMillis() >= toTs.toMillis()) {
       setError('End must be after start.')
       return
@@ -190,6 +206,9 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
       setQuantityInvoiced('1')
       setQuantityCommitted('1')
       setCommittedTouched(false)
+      setUseCustomDates(false)
+      setReservedFrom(timestampToLocalInput(event.startAt))
+      setReservedTo(timestampToLocalInput(event.endAt))
       setDropOffLocation('')
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
@@ -233,6 +252,28 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
     await updateReservation(r.id, { quantityCommitted: next })
   }
 
+  const handleSaveDates = async (r: Reservation, fromTs: Timestamp, toTs: Timestamp) => {
+    const item = itemById.get(r.itemId)
+    if (!item) {
+      await updateReservation(r.id, { reservedFrom: fromTs, reservedTo: toTs })
+      return
+    }
+    const ceiling = availableForRental(item)
+    const availability = await checkInventoryAvailability(
+      r.itemId,
+      getItemTotalQuantity(item),
+      ceiling,
+      fromTs,
+      toTs,
+      getCommittedQuantity(r),
+      r.id,
+    )
+    if (!availability.isAvailable) {
+      throw new Error(`Only ${Math.max(availability.available, 0)} of ${availability.totalQuantity} available for that window.`)
+    }
+    await updateReservation(r.id, { reservedFrom: fromTs, reservedTo: toTs })
+  }
+
   return (
     <div className="rounded-lg border border-gray-200 bg-white p-4">
       <h2 className="mb-3 text-lg font-semibold text-charcoal">Assigned inventory</h2>
@@ -251,8 +292,6 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
                 <th className="py-1.5">Item</th>
                 <th className="py-1.5">Invoiced</th>
                 <th className="py-1.5">Committed</th>
-                <th className="py-1.5">From</th>
-                <th className="py-1.5">To</th>
                 <th className="py-1.5">Drop-off</th>
                 <th className="py-1.5" />
               </tr>
@@ -263,7 +302,16 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
                 return (
                   <Fragment key={r.id}>
                     <tr>
-                      <td className="py-1.5 font-medium text-charcoal">{itemById.get(r.itemId)?.name ?? '(deleted item)'}</td>
+                      <td className="py-1.5 font-medium text-charcoal">
+                        <div>{itemById.get(r.itemId)?.name ?? '(deleted item)'}</div>
+                        <ReservationDatesCell
+                          eventFrom={event.startAt}
+                          eventTo={event.endAt}
+                          reservedFrom={r.reservedFrom}
+                          reservedTo={r.reservedTo}
+                          onSave={(from, to) => handleSaveDates(r, from, to)}
+                        />
+                      </td>
                       <td className="py-1.5 text-gray-600">
                         <QuantityCell value={getInvoicedQuantity(r)} onSave={(next) => handleSaveInvoiced(r, next)} />
                       </td>
@@ -279,8 +327,6 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
                           <QuantityCell value={getCommittedQuantity(r)} onSave={(next) => handleSaveCommitted(r, next)} />
                         )}
                       </td>
-                      <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedFrom)}</td>
-                      <td className="py-1.5 text-sm text-gray-600">{formatTimestamp(r.reservedTo)}</td>
                       <td className="py-1.5">
                         <DropOffCell
                           value={r.dropOffLocation ?? ''}
@@ -303,7 +349,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
                         </td>
                         <td className="py-1 text-sm text-gray-400">—</td>
                         <td className="py-1 text-sm text-gray-500">{getCommittedQuantity(child)}</td>
-                        <td className="py-1" colSpan={4} />
+                        <td className="py-1" colSpan={2} />
                       </tr>
                     ))}
                   </Fragment>
@@ -315,7 +361,7 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
       )}
 
       <form onSubmit={handleAdd} className="grid grid-cols-1 gap-3 border-t border-gray-200 pt-4 sm:grid-cols-2 md:grid-cols-4">
-        <FormRow label="Item">
+        <AddRowField label="Item">
           <Select value={itemId} onChange={(e) => handleItemChange(e.target.value)}>
             {items.map((i) => (
               <option key={i.id} value={i.id}>
@@ -323,8 +369,8 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
               </option>
             ))}
           </Select>
-        </FormRow>
-        <FormRow label="Quantity invoiced (customer pays)">
+        </AddRowField>
+        <AddRowField label="Quantity invoiced (customer pays)">
           <Input
             type="number"
             inputMode="numeric"
@@ -332,8 +378,8 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
             value={quantityInvoiced}
             onChange={(e) => handleInvoicedChange(e.target.value)}
           />
-        </FormRow>
-        <FormRow label="Quantity committed (blocks inventory)">
+        </AddRowField>
+        <AddRowField label="Quantity committed (blocks inventory)">
           <Input
             type="number"
             inputMode="numeric"
@@ -341,20 +387,40 @@ export function ReservationManager({ event, items }: ReservationManagerProps) {
             value={quantityCommitted}
             onChange={(e) => handleCommittedChange(e.target.value)}
           />
-        </FormRow>
-        <FormRow label="From">
-          <Input type="datetime-local" value={reservedFrom} onChange={(e) => setReservedFrom(e.target.value)} />
-        </FormRow>
-        <FormRow label="To">
-          <Input type="datetime-local" value={reservedTo} onChange={(e) => setReservedTo(e.target.value)} />
-        </FormRow>
-        <FormRow label="Drop-off location (optional)">
+        </AddRowField>
+        <AddRowField label="Drop-off location (optional)">
           <Input
             value={dropOffLocation}
             onChange={(e) => setDropOffLocation(e.target.value)}
             placeholder="Main Stage, Kitchen area…"
           />
-        </FormRow>
+        </AddRowField>
+
+        <div className="sm:col-span-2 md:col-span-4">
+          <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-base text-charcoal">
+            <input
+              type="checkbox"
+              checked={useCustomDates}
+              onChange={(e) => setUseCustomDates(e.target.checked)}
+              className="h-5 w-5"
+            />
+            Use custom dates for this item
+          </label>
+          <p className="text-sm text-gray-500">
+            {useCustomDates ? 'Set a window just for this item, below.' : `Uses the event's own window: ${formatTimestamp(event.startAt)} – ${formatTimestamp(event.endAt)}.`}
+          </p>
+        </div>
+
+        {useCustomDates && (
+          <>
+            <AddRowField label="From">
+              <Input type="datetime-local" value={reservedFrom} onChange={(e) => setReservedFrom(e.target.value)} />
+            </AddRowField>
+            <AddRowField label="To">
+              <Input type="datetime-local" value={reservedTo} onChange={(e) => setReservedTo(e.target.value)} />
+            </AddRowField>
+          </>
+        )}
 
         <div className="sm:col-span-2 md:col-span-4">
           {(invoicedNum > 0 || committedNum > 0) && (

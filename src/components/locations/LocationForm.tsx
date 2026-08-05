@@ -1,6 +1,7 @@
 import { useState, type FormEvent } from 'react'
 import { Button } from '../ui/Button'
 import { FormRow, Input, Select } from '../ui/Field'
+import { useSaveFlash } from '../../hooks/useSaveFlash'
 import type { LocationDoc } from '../../types'
 
 export interface LocationFormValues {
@@ -31,6 +32,7 @@ export function LocationForm({
   const [type, setType] = useState<LocationDoc['type']>(initial?.type ?? 'standard')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { saved, flash } = useSaveFlash()
 
   const [newSubName, setNewSubName] = useState('')
   const [addingSub, setAddingSub] = useState(false)
@@ -48,6 +50,8 @@ export function LocationForm({
     setSaving(true)
     try {
       await onSubmit({ name: name.trim(), type })
+      // Creating closes the modal after the flash; editing stays open (sub-locations live below).
+      flash(initial ? undefined : onCancel)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -113,8 +117,8 @@ export function LocationForm({
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save location'}
+        <Button type="submit" disabled={saving || saved}>
+          {saved ? 'Saved ✓' : saving ? 'Saving…' : 'Save location'}
         </Button>
       </div>
 

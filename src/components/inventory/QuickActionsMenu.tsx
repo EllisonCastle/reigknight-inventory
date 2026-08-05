@@ -4,6 +4,7 @@ import { Button } from '../ui/Button'
 import { StatusPanel } from './StatusPanel'
 import { PhotoUploader } from './PhotoUploader'
 import { getItemTotalQuantity, rebalanceForNewTotal, reduceStorageEntriesBy, validateStatusCounts } from '../../lib/inventoryStatus'
+import { useSaveFlash } from '../../hooks/useSaveFlash'
 import type { InventoryFormFields } from './InventoryForm'
 import type { InventoryItem, InventoryPhoto, StatusBreakdown, StorageEntry } from '../../types'
 
@@ -102,6 +103,7 @@ function StatusSheet({
   const totalQuantity = getItemTotalQuantity({ storageEntries, totalQuantity: item.totalQuantity })
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { saved, flash } = useSaveFlash()
 
   const handleChange = (next: StatusBreakdown, totalQuantityDelta?: number) => {
     setStatusBreakdown(next)
@@ -125,7 +127,7 @@ function StatusSheet({
         data.storageEntries = storageEntries
       }
       await onUpdate(item.id, data)
-      onClose()
+      flash(onClose)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -144,8 +146,8 @@ function StatusSheet({
         <Button type="button" variant="secondary" onClick={onClose} className="min-h-[44px] flex-1">
           Cancel
         </Button>
-        <Button type="button" onClick={handleSave} disabled={saving} className="min-h-[44px] flex-1">
-          {saving ? 'Saving…' : 'Save'}
+        <Button type="button" onClick={handleSave} disabled={saving || saved} className="min-h-[44px] flex-1">
+          {saved ? 'Saved ✓' : saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </BottomSheet>
@@ -166,6 +168,7 @@ function QuantitySheet({
   const [quantity, setQuantity] = useState(singleEntry?.quantity ?? 0)
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { saved, flash } = useSaveFlash()
 
   const step = (delta: number) => {
     setQuantity((q) => Math.max(0, q + delta))
@@ -181,7 +184,7 @@ function QuantitySheet({
     setError('')
     try {
       await onUpdate(item.id, { storageEntries, statusBreakdown })
-      onClose()
+      flash(onClose)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -233,8 +236,8 @@ function QuantitySheet({
         <Button type="button" variant="secondary" onClick={onClose} className="min-h-[44px] flex-1">
           Cancel
         </Button>
-        <Button type="button" onClick={handleSave} disabled={saving} className="min-h-[44px] flex-1">
-          {saving ? 'Saving…' : 'Save'}
+        <Button type="button" onClick={handleSave} disabled={saving || saved} className="min-h-[44px] flex-1">
+          {saved ? 'Saved ✓' : saving ? 'Saving…' : 'Save'}
         </Button>
       </div>
     </BottomSheet>

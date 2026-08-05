@@ -3,6 +3,7 @@ import { Button } from '../ui/Button'
 import { FormRow, Input, Label, Select, TextArea } from '../ui/Field'
 import { TASK_STATUSES, TASK_STATUS_LABELS, TASK_TYPES, TASK_TYPE_LABELS } from '../../constants/tasks'
 import { dateInputToTimestamp, timestampToDateInput } from '../../lib/datetime'
+import { useSaveFlash } from '../../hooks/useSaveFlash'
 import type { Person, TaskDoc } from '../../types'
 import type { TaskStatus, TaskType } from '../../constants/tasks'
 
@@ -37,6 +38,7 @@ export function TaskForm({ initial, people, onCancel, onSubmit }: TaskFormProps)
   const [status, setStatus] = useState<TaskStatus>(initial?.status ?? 'todo')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { saved, flash } = useSaveFlash()
 
   const activePeople = people.filter((p) => p.active)
 
@@ -65,6 +67,7 @@ export function TaskForm({ initial, people, onCancel, onSubmit }: TaskFormProps)
         dueDate: dateInputToTimestamp(dueDate),
         status,
       })
+      flash(onCancel)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -137,8 +140,8 @@ export function TaskForm({ initial, people, onCancel, onSubmit }: TaskFormProps)
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : initial ? 'Save changes' : 'Add task'}
+        <Button type="submit" disabled={saving || saved}>
+          {saved ? 'Saved ✓' : saving ? 'Saving…' : initial ? 'Save changes' : 'Add task'}
         </Button>
       </div>
     </form>

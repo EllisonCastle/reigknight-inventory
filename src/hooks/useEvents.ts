@@ -13,7 +13,7 @@ import {
 } from 'firebase/firestore'
 import { db } from '../lib/firebase'
 import { useAuth } from './useAuth'
-import { syncReservationsEventStatus } from '../lib/availability'
+import { syncReservationsEventStatus, syncReservationsEventWindow } from '../lib/availability'
 import { publishEventSnapshot } from '../lib/publishSnapshot'
 import type { EventDoc } from '../types'
 
@@ -53,9 +53,23 @@ export function useEvents() {
     id: string,
     data: Partial<Omit<EventDoc, 'id' | 'createdAt' | 'createdBy' | 'shareToken'>>,
   ) => {
+    let oldEvent: EventDoc | undefined
+    if (data.startAt || data.endAt) {
+      const snap = await getDoc(doc(db, 'events', id))
+      if (snap.exists()) oldEvent = { id: snap.id, ...snap.data() } as EventDoc
+    }
+
     await updateDoc(doc(db, 'events', id), data)
+
     if (data.status) {
       await syncReservationsEventStatus(id, data.status)
+    }
+    if (oldEvent) {
+      const newStartAt = data.startAt ?? oldEvent.startAt
+      const newEndAt = data.endAt ?? oldEvent.endAt
+      if (newStartAt.toMillis() !== oldEvent.startAt.toMillis() || newEndAt.toMillis() !== oldEvent.endAt.toMillis()) {
+        await syncReservationsEventWindow(id, oldEvent.startAt, oldEvent.endAt, newStartAt, newEndAt)
+      }
     }
     await publishEventSnapshot(id)
   }

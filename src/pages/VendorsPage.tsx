@@ -1,10 +1,12 @@
-import { useState } from 'react'
+import { useMemo, useState } from 'react'
 import { useVendors } from '../hooks/useVendors'
 import { VendorForm, type VendorFormValues } from '../components/vendors/VendorForm'
 import { Modal } from '../components/ui/Modal'
 import { Button } from '../components/ui/Button'
+import { Badge } from '../components/ui/Badge'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
 import { FormRow, Select } from '../components/ui/Field'
+import { VENDOR_TYPES, VENDOR_TYPE_LABELS } from '../constants/vendors'
 import type { VendorDoc } from '../types'
 
 export function VendorsPage() {
@@ -17,6 +19,22 @@ export function VendorsPage() {
   const [assignedCount, setAssignedCount] = useState(0)
   const [reassignToId, setReassignToId] = useState('')
   const [deleting, setDeleting] = useState(false)
+
+  const [typeFilter, setTypeFilter] = useState('')
+  const [preferredOnly, setPreferredOnly] = useState(false)
+
+  const filteredVendors = useMemo(() => {
+    const filtered = vendors.filter((v) => {
+      if (typeFilter && v.vendorType !== typeFilter) return false
+      if (preferredOnly && !v.preferred) return false
+      return true
+    })
+    // Preferred vendors stand out first — useful once a large vendor list is imported later.
+    return [...filtered].sort((a, b) => {
+      if (Boolean(a.preferred) !== Boolean(b.preferred)) return a.preferred ? -1 : 1
+      return a.name.localeCompare(b.name)
+    })
+  }, [vendors, typeFilter, preferredOnly])
 
   const openCreate = () => {
     setEditing(undefined)
@@ -34,7 +52,6 @@ export function VendorsPage() {
     } else {
       await createVendor(values)
     }
-    setModalOpen(false)
   }
 
   const handleDeleteClick = async (vendor: VendorDoc) => {
@@ -77,29 +94,83 @@ export function VendorsPage() {
 
       <ErrorNotice message={error} />
 
+      {vendors.length > 0 && (
+        <div className="mb-4 flex flex-wrap items-center gap-3">
+          <div className="w-full sm:w-56">
+            <Select value={typeFilter} onChange={(e) => setTypeFilter(e.target.value)}>
+              <option value="">All types</option>
+              {VENDOR_TYPES.map((t) => (
+                <option key={t} value={t}>
+                  {VENDOR_TYPE_LABELS[t]}
+                </option>
+              ))}
+            </Select>
+          </div>
+          <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-base text-charcoal">
+            <input
+              type="checkbox"
+              checked={preferredOnly}
+              onChange={(e) => setPreferredOnly(e.target.checked)}
+              className="h-5 w-5"
+            />
+            Preferred only
+          </label>
+        </div>
+      )}
+
       {loading ? (
         <p className="text-base text-gray-500">Loading…</p>
       ) : vendors.length === 0 ? (
         <p className="text-base text-gray-500">No vendors yet. Add outside contractors so you can assign agenda items to them.</p>
+      ) : filteredVendors.length === 0 ? (
+        <p className="text-base text-gray-500">No vendors match.</p>
       ) : (
         <div className="overflow-x-auto rounded-lg border border-gray-200 bg-white">
           <table className="w-full text-base">
             <thead className="bg-surface text-left text-sm font-medium uppercase tracking-wide text-gray-500">
               <tr>
                 <th className="px-4 py-2.5">Name</th>
+                <th className="px-4 py-2.5">Type</th>
                 <th className="px-4 py-2.5">Contact</th>
                 <th className="px-4 py-2.5">Phone / email</th>
                 <th className="px-4 py-2.5" />
               </tr>
             </thead>
             <tbody className="divide-y divide-gray-100">
-              {vendors.map((vendor) => (
+              {filteredVendors.map((vendor) => (
                 <tr key={vendor.id}>
-                  <td className="px-4 py-3 font-medium text-charcoal">{vendor.name}</td>
+                  <td className="px-4 py-3 font-medium text-charcoal">
+                    {vendor.preferred && (
+                      <span title="Preferred vendor" aria-label="Preferred vendor" className="mr-1 text-amber-500">
+                        ★
+                      </span>
+                    )}
+                    {vendor.name}
+                  </td>
+                  <td className="px-4 py-3">
+                    {vendor.vendorType ? (
+                      <Badge tone="regal">{VENDOR_TYPE_LABELS[vendor.vendorType as keyof typeof VENDOR_TYPE_LABELS] ?? vendor.vendorType}</Badge>
+                    ) : (
+                      <span className="text-sm text-gray-400">—</span>
+                    )}
+                  </td>
                   <td className="px-4 py-3 text-sm text-gray-600">{vendor.contact || '—'}</td>
                   <td className="px-4 py-3 text-sm text-gray-600">
                     {vendor.phone || '—'}
                     {vendor.email ? ` · ${vendor.email}` : ''}
+                    {vendor.website ? (
+                      <>
+                        {' · '}
+                        <a
+                          href={vendor.website}
+                          target="_blank"
+                          rel="noreferrer"
+                          className="text-regal hover:underline"
+                        >
+                          Website
+                        </a>
+                      </>
+                    ) : null}
                   </td>
                   <td className="px-4 py-3 text-right">
                     <button
