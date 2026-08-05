@@ -39,7 +39,6 @@ export function EventsPage() {
     } else {
       await createEvent(values)
     }
-    setModalOpen(false)
   }
 
   const handleDelete = async (event: EventDoc) => {

@@ -3,6 +3,7 @@ import { Button } from '../ui/Button'
 import { FormRow, Input, Select } from '../ui/Field'
 import { PEOPLE_ROLES, PEOPLE_ROLE_LABELS } from '../../constants/people'
 import { createTeamAccount } from '../../lib/createTeamAccount'
+import { useSaveFlash } from '../../hooks/useSaveFlash'
 import type { Person } from '../../types'
 
 export interface PersonFormValues {
@@ -39,6 +40,7 @@ export function PersonForm({ initial, onCancel, onSubmit }: PersonFormProps) {
   const [confirmPassword, setConfirmPassword] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const { saved, flash } = useSaveFlash()
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -76,6 +78,7 @@ export function PersonForm({ initial, onCancel, onSubmit }: PersonFormProps) {
         active,
         authUid,
       })
+      flash(onCancel)
     } catch (err) {
       setError(createLogin ? friendlyAuthError(err) : err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -145,8 +148,8 @@ export function PersonForm({ initial, onCancel, onSubmit }: PersonFormProps) {
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save person'}
+        <Button type="submit" disabled={saving || saved}>
+          {saved ? 'Saved ✓' : saving ? 'Saving…' : 'Save person'}
         </Button>
       </div>
     </form>

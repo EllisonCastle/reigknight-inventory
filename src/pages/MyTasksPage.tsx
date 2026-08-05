@@ -9,6 +9,7 @@ import { Select } from '../components/ui/Field'
 import { ErrorNotice } from '../components/ui/ErrorNotice'
 import { TASK_STATUS_LABELS, TASK_TYPE_LABELS, TASK_TYPES } from '../constants/tasks'
 import { formatDate } from '../lib/datetime'
+import { getTaskTone, TASK_TONE_STRIPE } from '../lib/taskTone'
 import type { TaskDoc } from '../types'
 
 const statusTone: Record<string, 'neutral' | 'amber' | 'red' | 'green'> = {
@@ -147,8 +148,12 @@ function MyTaskRow({
   unreadCount: number
   onToggleDone: () => void
 }) {
+  const tone = getTaskTone(task)
+
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      className={`flex flex-col gap-2 rounded-lg border border-l-4 border-gray-200 bg-white p-3 sm:flex-row sm:items-center sm:justify-between ${TASK_TONE_STRIPE[tone]}`}
+    >
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
@@ -187,7 +192,7 @@ function MyTaskRow({
         </div>
       </div>
       <div className="pl-8 sm:pl-0">
-        {task.status !== 'done' && <Badge tone={statusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>}
+        <Badge tone={statusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>
       </div>
     </div>
   )

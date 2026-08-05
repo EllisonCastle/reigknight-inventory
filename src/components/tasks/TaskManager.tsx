@@ -11,6 +11,7 @@ import { Select } from '../ui/Field'
 import { ErrorNotice } from '../ui/ErrorNotice'
 import { TASK_STATUS_LABELS, TASK_TYPE_LABELS, TASK_TYPES } from '../../constants/tasks'
 import { formatDate } from '../../lib/datetime'
+import { getTaskTone, TASK_TONE_STRIPE } from '../../lib/taskTone'
 import type { Person, TaskDoc } from '../../types'
 
 interface TaskManagerProps {
@@ -69,7 +70,6 @@ export function TaskManager({ eventId, people }: TaskManagerProps) {
     } else {
       await createTask({ ...values, eventId })
     }
-    setModalOpen(false)
   }
 
   const handleDelete = async (task: TaskDoc) => {
@@ -215,8 +215,12 @@ function TaskRow({
   onEdit: () => void
   onDelete: () => void
 }) {
+  const tone = getTaskTone(task)
+
   return (
-    <div className="flex flex-col gap-2 rounded-lg border border-gray-200 p-3 sm:flex-row sm:items-center sm:justify-between">
+    <div
+      className={`flex flex-col gap-2 rounded-lg border border-l-4 border-gray-200 p-3 sm:flex-row sm:items-center sm:justify-between ${TASK_TONE_STRIPE[tone]}`}
+    >
       <div className="flex items-start gap-3">
         <input
           type="checkbox"
@@ -252,7 +256,7 @@ function TaskRow({
         </div>
       </div>
       <div className="flex items-center gap-2 pl-8 sm:pl-0">
-        {task.status !== 'done' && <Badge tone={statusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>}
+        <Badge tone={statusTone[task.status]}>{TASK_STATUS_LABELS[task.status]}</Badge>
         <button
           onClick={onEdit}
           disabled={!isAdmin}

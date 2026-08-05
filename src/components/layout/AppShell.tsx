@@ -46,7 +46,7 @@ export function AppShell({ children }: { children: ReactNode }) {
         </nav>
       </aside>
 
-      <div className="flex flex-1 flex-col">
+      <div className="flex min-w-0 flex-1 flex-col">
         <header className="flex items-center gap-2 border-b border-gray-200 bg-white px-4 py-3 sm:px-6">
           <button
             type="button"

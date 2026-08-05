@@ -178,6 +178,10 @@ export interface VendorDoc {
   email: string
   notes: string
   createdAt: Timestamp | null
+  /** UI Polish pass — optional, so pre-existing vendor docs keep working with no migration. */
+  website?: string
+  vendorType?: string
+  preferred?: boolean
 }
 
 /** agendaItems/{itemId} — one cue in an event's schedule. isPublic controls whether it also appears on the guest agenda. */

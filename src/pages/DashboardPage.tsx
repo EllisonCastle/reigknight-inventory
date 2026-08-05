@@ -1,4 +1,4 @@
-import { useMemo } from 'react'
+import { useMemo, useState } from 'react'
 import { Link } from 'react-router-dom'
 import { useVenues } from '../hooks/useVenues'
 import { useInventoryItems } from '../hooks/useInventoryItems'
@@ -9,6 +9,8 @@ import { useTasksForAssignee, useAllTasks } from '../hooks/useTasks'
 import { Badge, StatusBadge } from '../components/ui/Badge'
 import { formatTimestamp, formatDate } from '../lib/datetime'
 import { TASK_STATUS_LABELS } from '../constants/tasks'
+import { getTaskTone, TASK_TONE_STRIPE } from '../lib/taskTone'
+import { needsAttention } from '../lib/inventoryStatus'
 import type { TaskDoc } from '../types'
 
 const taskStatusTone: Record<string, 'neutral' | 'amber' | 'red' | 'green'> = {
@@ -18,13 +20,16 @@ const taskStatusTone: Record<string, 'neutral' | 'amber' | 'red' | 'green'> = {
   done: 'green',
 }
 
-function StatTile({ label, value }: { label: string; value: number | string }) {
-  return (
-    <div className="rounded-lg border border-gray-200 bg-white p-5">
+const THIRTY_DAYS_MS = 30 * 24 * 60 * 60 * 1000
+
+function StatTile({ label, value, to }: { label: string; value: number | string; to?: string }) {
+  const content = (
+    <div className="rounded-lg border border-gray-200 bg-white p-5 transition-colors hover:border-regal">
       <p className="text-sm text-gray-500">{label}</p>
       <p className="mt-1 text-2xl font-semibold text-charcoal">{value}</p>
     </div>
   )
+  return to ? <Link to={to}>{content}</Link> : content
 }
 
 function sortByBlockedThenDueDate(tasks: TaskDoc[]): TaskDoc[] {
@@ -72,14 +77,30 @@ export function DashboardPage() {
     [allTasks],
   )
 
+  const needsAttentionCount = useMemo(() => items.filter(needsAttention).length, [items])
+
+  // Admins see every completed task org-wide; anyone with tasks assigned to them sees their own.
+  const recentlyCompletedSource = isAdmin ? allTasks : myTasks
+  const recentlyCompleted = useMemo(() => {
+    const cutoff = Date.now() - THIRTY_DAYS_MS
+    return recentlyCompletedSource
+      .filter((t) => t.status === 'done' && t.completedAt && t.completedAt.toMillis() >= cutoff)
+      .sort((a, b) => (b.completedAt?.toMillis() ?? 0) - (a.completedAt?.toMillis() ?? 0))
+  }, [recentlyCompletedSource])
+  const [showRecentlyCompleted, setShowRecentlyCompleted] = useState(false)
+  const showRecentlyCompletedSection = isAdmin || myTasks.length > 0
+
   return (
     <div className="mx-auto max-w-5xl">
       <h1 className="mb-6 text-xl font-semibold text-charcoal">Dashboard</h1>
 
-      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-3">
-        <StatTile label="Venues" value={venues.length} />
-        <StatTile label="Inventory items" value={items.length} />
-        <StatTile label="Upcoming events" value={upcoming.length} />
+      <div className="mb-8 grid grid-cols-1 gap-4 sm:grid-cols-2 lg:grid-cols-4">
+        <StatTile label="Venues" value={venues.length} to="/venues" />
+        <StatTile label="Inventory items" value={items.length} to="/inventory" />
+        <StatTile label="Upcoming events" value={upcoming.length} to="/events" />
+        {isAdmin && (
+          <StatTile label="Items needing attention" value={needsAttentionCount} to="/inventory?attention=1" />
+        )}
       </div>
 
       <h2 className="mb-3 text-lg font-semibold text-charcoal">Next up</h2>
@@ -129,7 +150,10 @@ export function DashboardPage() {
           {myUpcomingTasks.map((task) => {
             const event = eventsById.get(task.eventId)
             return (
-              <div key={task.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
+              <div
+                key={task.id}
+                className={`flex items-center justify-between rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${TASK_TONE_STRIPE[getTaskTone(task)]}`}
+              >
                 <div>
                   <p className="text-base font-medium text-charcoal">{task.title}</p>
                   <p className="text-sm text-gray-500">
@@ -164,7 +188,10 @@ export function DashboardPage() {
                   .map((id) => peopleById.get(id)?.fullName)
                   .filter((name): name is string => Boolean(name))
                 return (
-                  <div key={task.id} className="flex items-center justify-between rounded-lg border border-gray-200 bg-white p-3">
+                  <div
+                    key={task.id}
+                    className={`flex items-center justify-between rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${TASK_TONE_STRIPE[getTaskTone(task)]}`}
+                  >
                     <div>
                       <p className="text-base font-medium text-charcoal">{task.title}</p>
                       <p className="text-sm text-gray-500">
@@ -188,6 +215,49 @@ export function DashboardPage() {
             </div>
           )}
         </>
+      )}
+
+      {showRecentlyCompletedSection && (
+        <div className="mt-8">
+          <button
+            type="button"
+            onClick={() => setShowRecentlyCompleted((v) => !v)}
+            className="min-h-[44px] text-base font-medium text-gray-500 hover:text-charcoal"
+          >
+            {showRecentlyCompleted ? '▾' : '▸'} Recently completed tasks ({recentlyCompleted.length})
+          </button>
+          {showRecentlyCompleted && (
+            <div className="mt-2 flex flex-col gap-2">
+              {recentlyCompleted.length === 0 ? (
+                <p className="text-base text-gray-500">Nothing completed in the last 30 days.</p>
+              ) : (
+                recentlyCompleted.map((task) => {
+                  const event = eventsById.get(task.eventId)
+                  return (
+                    <div
+                      key={task.id}
+                      className={`flex items-center justify-between rounded-lg border border-l-4 border-gray-200 bg-white p-3 ${TASK_TONE_STRIPE.done}`}
+                    >
+                      <div>
+                        <p className="text-base font-medium text-charcoal">{task.title}</p>
+                        <p className="text-sm text-gray-500">
+                          {event ? (
+                            <Link to={`/events/${event.id}`} className="hover:underline">
+                              {event.name}
+                            </Link>
+                          ) : (
+                            'Unknown event'
+                          )}
+                        </p>
+                      </div>
+                      <p className="text-sm text-gray-500">Completed {formatDate(task.completedAt)}</p>
+                    </div>
+                  )
+                })
+              )}
+            </div>
+          )}
+        </div>
       )}
     </div>
   )

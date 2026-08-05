@@ -30,7 +30,6 @@ export function PeoplePage() {
     } else {
       await createPerson({ ...values, authUid: values.authUid ?? '' })
     }
-    setModalOpen(false)
   }
 
   const handleDelete = async (person: Person) => {

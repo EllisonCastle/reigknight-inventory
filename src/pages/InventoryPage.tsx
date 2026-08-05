@@ -1,5 +1,5 @@
 import { useMemo, useState } from 'react'
-import { Link } from 'react-router-dom'
+import { Link, useSearchParams } from 'react-router-dom'
 import { useInventoryItems } from '../hooks/useInventoryItems'
 import { usePermissions } from '../hooks/usePermissions'
 import { InventoryForm, type InventoryFormFields } from '../components/inventory/InventoryForm'
@@ -62,7 +62,11 @@ export function InventoryPage() {
   const { locations } = useLocations()
   const locationsById = useMemo(() => new Map(locations.map((l) => [l.id, l])), [locations])
   const itemsById = useMemo(() => new Map(items.map((i) => [i.id, i])), [items])
-  const [filters, setFilters] = useState<InventoryFilterState>(emptyInventoryFilters)
+  const [searchParams] = useSearchParams()
+  const [filters, setFilters] = useState<InventoryFilterState>(() => ({
+    ...emptyInventoryFilters,
+    attentionOnly: searchParams.get('attention') === '1',
+  }))
   const [sort, setSort] = useState<InventorySortKey>('updatedAt')
   const [modalOpen, setModalOpen] = useState(false)
   const [importOpen, setImportOpen] = useState(false)

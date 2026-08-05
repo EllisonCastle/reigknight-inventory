@@ -4,6 +4,7 @@ import { FormRow, Input, Select, TextArea } from '../ui/Field'
 import { VenueConflictWarning } from './ConflictWarning'
 import { checkVenueConflict, type VenueConflict } from '../../lib/availability'
 import { localInputToTimestamp, timestampToLocalInput } from '../../lib/datetime'
+import { useSaveFlash } from '../../hooks/useSaveFlash'
 import { EVENT_STATUSES, type EventDoc, type EventStatus, type Venue } from '../../types'
 
 export interface EventFormFields {
@@ -39,6 +40,7 @@ export function EventForm({ initial, venues, onCancel, onSubmit }: EventFormProp
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
   const [conflicts, setConflicts] = useState<VenueConflict[]>([])
+  const { saved, flash } = useSaveFlash()
 
   const handleSubmit = async (e: FormEvent) => {
     e.preventDefault()
@@ -76,6 +78,7 @@ export function EventForm({ initial, venues, onCancel, onSubmit }: EventFormProp
         notes: notes.trim(),
         checkinEventId: checkinEventId.trim(),
       })
+      flash(onCancel)
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Something went wrong.')
     } finally {
@@ -145,8 +148,8 @@ export function EventForm({ initial, venues, onCancel, onSubmit }: EventFormProp
         <Button type="button" variant="secondary" onClick={onCancel}>
           Cancel
         </Button>
-        <Button type="submit" disabled={saving}>
-          {saving ? 'Saving…' : 'Save event'}
+        <Button type="submit" disabled={saving || saved}>
+          {saved ? 'Saved ✓' : saving ? 'Saving…' : 'Save event'}
         </Button>
       </div>
     </form>

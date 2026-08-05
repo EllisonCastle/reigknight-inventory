@@ -2,6 +2,7 @@ import { useMemo, useState } from 'react'
 import { Input, Select } from '../ui/Field'
 import { Button } from '../ui/Button'
 import { BottomSheet } from '../ui/BottomSheet'
+import { Popover } from '../ui/Popover'
 import { CATEGORIES, COLORS, CONDITIONS, MATERIALS } from '../../constants/inventory'
 import { needsAttention } from '../../lib/inventoryStatus'
 import { useLocations } from '../../hooks/useLocations'
@@ -51,9 +52,9 @@ interface InventoryFiltersProps {
   onSortChange: (sort: InventorySortKey) => void
 }
 
+/** Counts only the filters that live inside the Filter-by panel — search and the attention toggle stay on the main bar and are already visibly active on their own. */
 function countActiveFilters(f: InventoryFilterState): number {
   let n = 0
-  if (f.search) n++
   if (f.category) n++
   if (f.material) n++
   if (f.color) n++
@@ -61,7 +62,6 @@ function countActiveFilters(f: InventoryFilterState): number {
   if (f.locationId) n++
   if (f.bin) n++
   if (f.condition) n++
-  if (f.attentionOnly) n++
   return n
 }
 
@@ -72,7 +72,7 @@ function itemBins(item: InventoryItem): string[] {
 }
 
 export function InventoryFilters({ items, value, onChange, sort, onSortChange }: InventoryFiltersProps) {
-  const [sheetOpen, setSheetOpen] = useState(false)
+  const [panelOpen, setPanelOpen] = useState(false)
   const { locations } = useLocations()
 
   const allTags = useMemo(() => Array.from(new Set(items.flatMap((i) => i.tags ?? []))).sort(), [items])
@@ -85,22 +85,9 @@ export function InventoryFilters({ items, value, onChange, sort, onSortChange }:
 
   const activeCount = countActiveFilters(value)
 
-  const content = (
+  const panelContent = (
     <div className="flex flex-col gap-3">
-      <Input
-        placeholder="Search name, description, or bin…"
-        value={value.search}
-        onChange={(e) => onChange({ ...value, search: e.target.value })}
-      />
-
       <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
-        <Select value={sort} onChange={(e) => onSortChange(e.target.value as InventorySortKey)}>
-          {SORT_OPTIONS.map((o) => (
-            <option key={o.value} value={o.value}>
-              Sort: {o.label}
-            </option>
-          ))}
-        </Select>
         <Select value={value.category} onChange={(e) => onChange({ ...value, category: e.target.value })}>
           <option value="">All categories</option>
           {CATEGORIES.map((c) => (
@@ -171,6 +158,55 @@ export function InventoryFilters({ items, value, onChange, sort, onSortChange }:
         </div>
       )}
 
+      {activeCount > 0 && (
+        <button
+          type="button"
+          onClick={() => onChange({ ...emptyInventoryFilters, search: value.search, attentionOnly: value.attentionOnly })}
+          className="min-h-[44px] self-start text-base font-medium text-regal hover:underline"
+        >
+          Clear filters
+        </button>
+      )}
+    </div>
+  )
+
+  return (
+    <div className="mb-4 flex flex-col gap-3 sm:flex-row sm:flex-wrap sm:items-center">
+      <div className="min-w-0 flex-1 sm:min-w-[220px]">
+        <Input
+          placeholder="Search name, description, or bin…"
+          value={value.search}
+          onChange={(e) => onChange({ ...value, search: e.target.value })}
+        />
+      </div>
+
+      <div className="w-full sm:w-56">
+        <Select value={sort} onChange={(e) => onSortChange(e.target.value as InventorySortKey)}>
+          {SORT_OPTIONS.map((o) => (
+            <option key={o.value} value={o.value}>
+              Sort: {o.label}
+            </option>
+          ))}
+        </Select>
+      </div>
+
+      <div className="relative">
+        <Button
+          type="button"
+          variant="secondary"
+          onClick={() => setPanelOpen((v) => !v)}
+          className="min-h-[44px] w-full sm:w-auto"
+        >
+          Filter by {activeCount > 0 ? `(${activeCount})` : ''}
+        </Button>
+
+        <div className="hidden sm:block">
+          <Popover open={panelOpen} onClose={() => setPanelOpen(false)}>
+            {panelContent}
+          </Popover>
+        </div>
+      </div>
+
       <label className="flex min-h-[44px] cursor-pointer items-center gap-2 text-base text-charcoal">
         <input
           type="checkbox"
@@ -181,34 +217,14 @@ export function InventoryFilters({ items, value, onChange, sort, onSortChange }:
         Show only items needing attention
       </label>
 
-      {activeCount > 0 && (
-        <button
-          type="button"
-          onClick={() => onChange(emptyInventoryFilters)}
-          className="min-h-[44px] self-start text-base font-medium text-regal hover:underline"
-        >
-          Clear filters
-        </button>
-      )}
-    </div>
-  )
-
-  return (
-    <div className="mb-4">
-      <div className="hidden rounded-lg border border-gray-200 bg-white p-4 sm:block">{content}</div>
-
       <div className="sm:hidden">
-        <Button type="button" variant="secondary" onClick={() => setSheetOpen(true)} className="min-h-[44px]">
-          Filters {activeCount > 0 ? `(${activeCount})` : ''}
-        </Button>
+        <BottomSheet open={panelOpen} onClose={() => setPanelOpen(false)} title="Filter by">
+          {panelContent}
+          <Button type="button" onClick={() => setPanelOpen(false)} className="mt-4 min-h-[44px] w-full">
+            Show results
+          </Button>
+        </BottomSheet>
       </div>
-
-      <BottomSheet open={sheetOpen} onClose={() => setSheetOpen(false)} title="Filter & sort">
-        {content}
-        <Button type="button" onClick={() => setSheetOpen(false)} className="mt-4 min-h-[44px] w-full">
-          Show results
-        </Button>
-      </BottomSheet>
     </div>
   )
 }
